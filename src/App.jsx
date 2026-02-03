@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   Calculator, Upload, Search, DollarSign, Activity, Award,
   Sliders, Trash2, Lock, Edit2, Target, TrendingUp, UserCheck,
-  ClipboardList, Settings2, Download, Star, Cloud, Loader2, Calendar
+  ClipboardList, Settings2, Download, Star, Cloud, Loader2, Calendar, Save
 } from "lucide-react";
 
 // --- CONFIGURAÇÃO SUPABASE ---
@@ -20,7 +20,7 @@ const formatCurrency = (val) => {
   }).format(val || 0);
 };
 
-// --- COMPONENTES AUXILIARES (VISUAL ORIGINAL) ---
+// --- COMPONENTES AUXILIARES ---
 const StatCard = ({ label, value, sub, icon }) => (
   <div className="bg-[#0A2230]/60 backdrop-blur-md p-7 rounded-[2rem] border border-[#00D4C5]/20 shadow-xl hover:border-[#00D4C5] transition-all group relative overflow-hidden">
     <div className="absolute top-0 right-0 w-24 h-24 bg-[#00D4C5]/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
@@ -108,43 +108,25 @@ const RuleColumn = ({
 const App = () => {
   const [activeTab, setActiveTab] = useState("DASHBOARD");
   
-  // --- ADIÇÃO: ESTADOS DE DATA E NUVEM ---
+  // --- ESTADOS DE DATA E NUVEM ---
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [reportTitle, setReportTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [savingManual, setSavingManual] = useState(false);
 
   const [selectedPerson, setSelectedPerson] = useState("");
   const [vendasRaw, setVendasRaw] = useState([]);
   const [reunioesRaw, setReunioesRaw] = useState([]);
-  const [isLibraryLoaded, setIsLibraryLoaded] = useState(true); // Mantido true pois estamos importando direto
 
-  // --- REGRAS (ORIGINAIS) ---
-  const [rules, setRules] = useState({
-    bonusUniversal: [
-      { min: 120, val: 750 },
-      { min: 100, val: 500 },
-      { min: 80, val: 350 },
-    ],
+  // --- REGRAS (Estado Inicial) ---
+  const initialRules = {
+    bonusUniversal: [{ min: 120, val: 750 }, { min: 100, val: 500 }, { min: 80, val: 350 }],
     sdr: {
-      t1MetaReunioes: [
-        { perc: 200, val: 1200 },
-        { perc: 150, val: 750 },
-        { perc: 100, val: 600 },
-        { perc: 80, val: 350 },
-      ],
-      t3Qualificacao: [
-        { min: 16, val: 200 },
-        { min: 14, val: 100 },
-        { min: 12, val: 50 },
-        { min: 0, val: 25 },
-      ],
-      t4VendasIniciadas: [
-        { min: 10900, val: 300 },
-        { min: 7900, val: 200 },
-        { min: 0, val: 100 },
-      ],
+      t1MetaReunioes: [{ perc: 200, val: 1200 }, { perc: 150, val: 750 }, { perc: 100, val: 600 }, { perc: 80, val: 350 }],
+      t3Qualificacao: [{ min: 16, val: 200 }, { min: 14, val: 100 }, { min: 12, val: 50 }, { min: 0, val: 25 }],
+      t4VendasIniciadas: [{ min: 10900, val: 300 }, { min: 7900, val: 200 }, { min: 0, val: 100 }],
     },
     closer: {
       matriz: {
@@ -154,51 +136,29 @@ const App = () => {
       },
     },
     gestor: {
-      bonusFaturamento: [
-        { min: 120, val: 1125 },
-        { min: 100, val: 875 },
-        { min: 80, val: 625 },
-      ],
-      bonusVolumeReunioes: [
-        { min: 120, val: 1125 },
-        { min: 100, val: 875 },
-        { min: 80, val: 625 },
-      ],
-      bonusMetaEquipe: [
-        { min: 100, val: 2250 },
-        { min: 80, val: 1750 },
-      ],
+      bonusFaturamento: [{ min: 120, val: 1125 }, { min: 100, val: 875 }, { min: 80, val: 625 }],
+      bonusVolumeReunioes: [{ min: 120, val: 1125 }, { min: 100, val: 875 }, { min: 80, val: 625 }],
+      bonusMetaEquipe: [{ min: 100, val: 2250 }, { min: 80, val: 1750 }],
       comissaoFatPerc: 0.01,
       overrideQualificacaoPerc: 0.2,
     },
     produto: {
-      bonusFaturamento: [
-        { min: 120, val: 600 },
-        { min: 100, val: 450 }, { min: 80, val: 350 },
-      ],
-      bonusVolumeReunioes: [
-        { min: 120, val: 600 }, { min: 100, val: 450 }, { min: 80, val: 350 },
-      ],
-      bonusMetaEquipe: [
-        { min: 100, val: 1125 }, { min: 80, val: 900 },
-      ],
+      bonusFaturamento: [{ min: 120, val: 600 }, { min: 100, val: 450 }, { min: 80, val: 350 }],
+      bonusVolumeReunioes: [{ min: 120, val: 600 }, { min: 100, val: 450 }, { min: 80, val: 350 }],
+      bonusMetaEquipe: [{ min: 100, val: 1125 }, { min: 80, val: 900 }],
       comissaoFatPerc: 0.006,
       overrideQualificacaoPerc: 0.1,
     },
     ldr: {
-      bonusReunioes: [
-        { min: 120, val: 250 }, { min: 100, val: 200 }, { min: 80, val: 150 },
-      ],
-      bonusGarimpados: [
-        { min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 },
-      ],
-      bonusCards: [
-        { min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 },
-      ],
+      bonusReunioes: [{ min: 120, val: 250 }, { min: 100, val: 200 }, { min: 80, val: 150 }],
+      bonusGarimpados: [{ min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 }],
+      bonusCards: [{ min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 }],
     },
-  });
+  };
 
-  const [goals, setGoals] = useState({
+  const [rules, setRules] = useState(initialRules);
+
+  const initialGoals = {
     timeMeta: 130000,
     timeRealManual: "",
     sdrMetaDefault: 14,
@@ -216,7 +176,9 @@ const App = () => {
       ldr: "Colaborador LDR",
     },
     ldrStats: { garimpados: 0, cards: 0, garimpadosMeta: 100, cardsMeta: 20 },
-  });
+  };
+
+  const [goals, setGoals] = useState(initialGoals);
 
   // Atualiza título do relatório
   useEffect(() => {
@@ -224,27 +186,55 @@ const App = () => {
     setReportTitle(date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' }));
   }, [selectedMonth, selectedYear]);
 
-  // --- LOGICA SUPABASE ---
-  const getFileName = (type) => `${type}_${selectedMonth}_${selectedYear}`; // Ex: VENDAS_3_2024
+  // --- LÓGICA DE NUVEM SUPABASE ---
+  const getFileName = (type) => `${type}_${selectedMonth}_${selectedYear}`; 
+  const getManualDataFileName = () => `DADOS_MANUAIS_${selectedMonth}_${selectedYear}.json`;
+
+  const saveManualData = async () => {
+    setSavingManual(true);
+    try {
+      const dataToSave = { rules: rules, goals: goals };
+      const blob = new Blob([JSON.stringify(dataToSave)], { type: "application/json" });
+      const fileName = getManualDataFileName();
+      const { error } = await supabase.storage.from('planilhas').upload(fileName, blob, { upsert: true });
+      if (error) throw error;
+      alert("Dados manuais (metas, bônus, regras) salvos com sucesso!");
+    } catch (err) {
+      console.error("Erro ao salvar dados manuais:", err);
+      alert("Erro ao salvar dados manuais.");
+    } finally {
+      setSavingManual(false);
+    }
+  };
 
   useEffect(() => {
     const fetchSavedData = async () => {
       setLoading(true);
-      // Limpa dados ao trocar mês
       setVendasRaw([]);
       setReunioesRaw([]);
+      setRules(initialRules);
+      setGoals(initialGoals);
 
       try {
         const vendasName = getFileName("VENDAS");
         const reunioesName = getFileName("REUNIOES");
+        const manualName = getManualDataFileName();
 
         const { data: vendasData } = await supabase.storage.from('planilhas').download(vendasName);
         if (vendasData) await processFile(vendasData, "VENDAS");
 
         const { data: reunioesData } = await supabase.storage.from('planilhas').download(reunioesName);
         if (reunioesData) await processFile(reunioesData, "REUNIOES");
+
+        const { data: manualData } = await supabase.storage.from('planilhas').download(manualName);
+        if (manualData) {
+            const textData = await manualData.text();
+            const jsonData = JSON.parse(textData);
+            if (jsonData.rules) setRules(jsonData.rules);
+            if (jsonData.goals) setGoals(jsonData.goals);
+        }
       } catch (error) {
-        // Silencioso se não existir arquivo
+        console.log("Alguns dados não encontrados para este mês.");
       } finally {
         setLoading(false);
       }
@@ -266,13 +256,9 @@ const App = () => {
 
     setUploading(true);
     try {
-      // 1. Processa local (visualização imediata)
       await processFile(file, type);
-      
-      // 2. Salva na nuvem
       const fileName = getFileName(type);
       const { error } = await supabase.storage.from('planilhas').upload(fileName, file, { upsert: true });
-
       if (error) throw error;
       alert(`Arquivo salvo com sucesso para ${selectedMonth}/${selectedYear}!`);
     } catch (err) {
@@ -283,25 +269,45 @@ const App = () => {
     }
   };
 
-  // --- MOTOR DE PROCESSAMENTO NUMÉRICO (ORIGINAL + AJUSTES PARA SEUS CSVs) ---
+  // --- EXPORTAR RELATÓRIO (NOVA FUNÇÃO) ---
+  const exportReport = () => {
+    if (goals.closedVariables.length === 0) {
+      alert("Não há dados fechados para exportar.");
+      return;
+    }
+
+    // Prepara os dados para o Excel com as novas colunas
+    const dataToExport = goals.closedVariables.map(v => ({
+        "Mês": reportTitle,
+        "Colaborador": v.name,
+        "Cargo": v.role,
+        "Variável a Receber": v.value,
+        "Meta Pessoal": v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-",
+        "Resultado Real": v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-",
+        "Atingimento %": v.achievement ? `${v.achievement.toFixed(2)}%` : "-",
+        "Data Fechamento": v.date
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fechamento");
+    XLSX.writeFile(wb, `Relatorio_Variavel_${reportTitle.replace(/ /g, "_")}.xlsx`);
+  };
+
+  // --- MOTORES DE CÁLCULO ---
   const parseNum = (val, isScore = false) => {
     if (val === undefined || val === null || val === "") return 0;
     if (typeof val === "number") return val;
     let s = val.toString().trim().replace("R$", "").trim();
-    
     const lastComma = s.lastIndexOf(",");
     const lastDot = s.lastIndexOf(".");
-    
-    // Detecção automática BR vs US
-    if (lastComma > lastDot) s = s.replace(/\./g, "").replace(",", "."); // 1.000,00 -> 1000.00
-    else if (lastDot > lastComma) s = s.replace(/,/g, ""); // 1,000.00 -> 1000.00
-    
+    if (lastComma > lastDot) s = s.replace(/\./g, "").replace(",", ".");
+    else if (lastDot > lastComma) s = s.replace(/,/g, "");
     return parseFloat(s) || 0;
   };
 
   const extractValue = (row, key) => {
     const keys = Object.keys(row);
-    // Mapeamento baseado nos seus arquivos
     const map = {
       sdr: ["Negócio - SDR", "sdr", "sdr responsável", "Atividade - Proprietário", "Proprietário da atividade"],
       proprietario: ["Negócio - Proprietário", "Proprietário", "closer", "proprietario"],
@@ -337,7 +343,6 @@ const App = () => {
     vendasRaw.forEach((v) => sdrsSet.add(extractValue(v, "sdr")));
 
     const closers = [...new Set(vendasRaw.map((v) => extractValue(v, "proprietario")))].filter(Boolean).sort();
-    // Garante array limpo de SDRs
     const sdrs = [...sdrsSet].filter(Boolean).sort();
 
     return {
@@ -353,12 +358,20 @@ const App = () => {
   const removeClosed = (id) =>
     setGoals((prev) => ({ ...prev, closedVariables: prev.closedVariables.filter((v) => v.id !== id) }));
 
-  const closeVariable = (name, role, value) => {
+  // ATUALIZADO: Aceita dados extras (meta, realizado, atingimento)
+  const closeVariable = (name, role, value, extras = {}) => {
     setGoals((prev) => ({
       ...prev,
       closedVariables: [
         ...prev.closedVariables,
-        { id: Date.now(), name, role, value, date: new Date().toLocaleDateString() },
+        { 
+            id: Date.now(), 
+            name, 
+            role, 
+            value, 
+            date: new Date().toLocaleDateString(),
+            ...extras // Espalha os dados extras aqui
+        },
       ],
     }));
     setActiveTab("FECHAMENTO");
@@ -393,7 +406,6 @@ const App = () => {
     const atingimentoMeta = metaIndiv > 0 ? (myReunioes.length / metaIndiv) * 100 : 0;
 
     const v1 = getTierValue(rules.sdr.t1MetaReunioes, atingimentoMeta, "perc")?.val || 0;
-
     const universal = getTierValue(rules.bonusUniversal, dataStore.atingimentoTime, "min")?.val || 0;
     const v2 = universal * (Math.min(atingimentoMeta, 100) / 100);
 
@@ -414,144 +426,79 @@ const App = () => {
     });
     const v4 = salesDetails.reduce((acc, s) => acc + s.bonus, 0);
 
-    const extras =
-      goals.individualExtras[name] || [
-        { label: "Bônus 1", val: 0 },
-        { label: "Bônus 2", val: 0 },
-        { label: "Bônus 3", val: 0 },
-      ];
+    const extras = goals.individualExtras[name] || [{ label: "Bônus 1", val: 0 }, { label: "Bônus 2", val: 0 }, { label: "Bônus 3", val: 0 }];
     const vExtra = extras.reduce((a, b) => a + b.val, 0);
 
-    return {
-      v1,
-      v2,
-      v3,
-      v4,
-      total: v1 + v2 + v3 + v4 + vExtra,
-      atingimentoMeta,
-      metaIndiv,
-      meetingsDetails,
-      salesDetails,
-      extras,
-    };
+    return { v1, v2, v3, v4, total: v1 + v2 + v3 + v4 + vExtra, atingimentoMeta, metaIndiv, meetingsDetails, salesDetails, extras, totalReunioesRealizadas: myReunioes.length };
   };
 
   // --- CALC CLOSER ---
   const calculateCloser = (name) => {
     const myVendasRaw = vendasRaw.filter((v) => isSamePerson(extractValue(v, "proprietario"), name));
     const fatIndiv = myVendasRaw.reduce((acc, v) => acc + parseNum(extractValue(v, "valor")), 0);
-
     const metaIndiv = goals.individualCloserGoals[name] || goals.closerMetaBase;
     const atingimentoIndiv = metaIndiv > 0 ? (fatIndiv / metaIndiv) * 100 : 0;
-
-    let key =
-      dataStore.atingimentoTime >= 120 ? "supermeta" : dataStore.atingimentoTime >= 100 ? "meta" : "abaixo";
-
+    let key = dataStore.atingimentoTime >= 120 ? "supermeta" : dataStore.atingimentoTime >= 100 ? "meta" : "abaixo";
     const levels = rules.closer.matriz[key].levels;
-    const threshold =
-      Object.keys(levels)
-        .map(Number)
-        .sort((a, b) => b - a)
-        .find((l) => atingimentoIndiv >= l) || 0;
-
+    const threshold = Object.keys(levels).map(Number).sort((a, b) => b - a).find((l) => atingimentoIndiv >= l) || 0;
     const perc = levels[threshold];
     const v1 = fatIndiv * perc;
-
     const v2 = getTierValue(rules.bonusUniversal, dataStore.atingimentoTime, "min")?.val || 0;
-
-    const extras =
-      goals.individualExtras[name] || [
-        { label: "Bônus 1", val: 0 },
-        { label: "Bônus 2", val: 0 },
-        { label: "Bônus 3", val: 0 },
-      ];
+    const extras = goals.individualExtras[name] || [{ label: "Bônus 1", val: 0 }, { label: "Bônus 2", val: 0 }, { label: "Bônus 3", val: 0 }];
     const vExtra = extras.reduce((a, b) => a + b.val, 0);
-
-    return {
-      v1,
-      v2,
-      total: v1 + v2 + vExtra,
-      fatIndiv,
-      metaIndiv,
-      perc,
-      atingimentoIndiv,
-      extras,
-      myVendas: myVendasRaw.map((v) => ({ name: extractValue(v, "nome"), value: parseNum(extractValue(v, "valor")) })),
-    };
+    return { v1, v2, total: v1 + v2 + vExtra, fatIndiv, metaIndiv, perc, atingimentoIndiv, extras, myVendas: myVendasRaw.map((v) => ({ name: extractValue(v, "nome"), value: parseNum(extractValue(v, "valor")) })) };
   };
 
   // --- CALC GESTOR / PRODUTO ---
   const calculateManagement = (role) => {
     const cfg = rules[role];
-
     const atingimentoFat = dataStore.atingimentoTime;
     const atingimentoVol = goals.meetingsMetaTotal > 0 ? (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100 : 0;
-
     const v1 = getTierValue(cfg.bonusFaturamento, atingimentoFat, "min")?.val || 0;
     const v2 = getTierValue(cfg.bonusVolumeReunioes, atingimentoVol, "min")?.val || 0;
     const v3 = getTierValue(cfg.bonusMetaEquipe, goals.teamEfficiencyManual, "min")?.val || 0;
-
     const v4 = dataStore.faturamentoTimeReal * cfg.comissaoFatPerc;
-
     const totalQualifPaga = reunioesRaw.reduce((acc, r) => {
       const score = parseNum(extractValue(r, "soma"), true);
       const bonus = getTierValue(rules.sdr.t3Qualificacao, score, "min")?.val || 0;
       return acc + bonus;
     }, 0);
-
     const v5 = totalQualifPaga * cfg.overrideQualificacaoPerc;
-
     const name = goals.customNames[role];
-
-    const extras =
-      goals.individualExtras[name] || [
-        { label: "Bônus 1", val: 0 },
-        { label: "Bônus 2", val: 0 },
-        { label: "Bônus 3", val: 0 },
-      ];
+    const extras = goals.individualExtras[name] || [{ label: "Bônus 1", val: 0 }, { label: "Bônus 2", val: 0 }, { label: "Bônus 3", val: 0 }];
     const vExtra = extras.reduce((a, b) => a + b.val, 0);
-
     return { v1, v2, v3, v4, v5, total: v1 + v2 + v3 + v4 + v5 + vExtra, totalQualifPaga, extras };
   };
 
   // --- CALC LDR ---
   const calculateLDR = () => {
     const stats = goals.ldrStats;
-
     const atingimentoReunioes = goals.meetingsMetaTotal > 0 ? (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100 : 0;
     const atingimentoFaturamento = dataStore.atingimentoTime;
-
     const atingimentoGarimpados = stats.garimpadosMeta > 0 ? (stats.garimpados / stats.garimpadosMeta) * 100 : 0;
     const atingimentoCards = stats.cardsMeta > 0 ? (stats.cards / stats.cardsMeta) * 100 : 0;
-
     const v1 = getTierValue(rules.ldr.bonusReunioes, atingimentoReunioes, "min")?.val || 0;
     const v2 = getTierValue(rules.ldr.bonusGarimpados, atingimentoGarimpados, "min")?.val || 0;
     const v3 = getTierValue(rules.ldr.bonusCards, atingimentoCards, "min")?.val || 0;
     const v4 = getTierValue(rules.bonusUniversal, atingimentoFaturamento, "min")?.val || 0;
-
     const name = goals.customNames.ldr;
-
-    const extras =
-      goals.individualExtras[name] || [
-        { label: "Bônus 1", val: 0 },
-        { label: "Bônus 2", val: 0 },
-        { label: "Bônus 3", val: 0 },
-      ];
+    const extras = goals.individualExtras[name] || [{ label: "Bônus 1", val: 0 }, { label: "Bônus 2", val: 0 }, { label: "Bônus 3", val: 0 }];
     const vExtra = extras.reduce((a, b) => a + b.val, 0);
-
-    return {
-      v1, v2, v3, v4,
-      total: v1 + v2 + v3 + v4 + vExtra,
-      extras,
-      atingimentoGarimpados,
-      atingimentoCards,
-      atingimentoReunioes,
-      atingimentoFaturamento,
-    };
+    return { v1, v2, v3, v4, total: v1 + v2 + v3 + v4 + vExtra, extras, atingimentoGarimpados, atingimentoCards, atingimentoReunioes, atingimentoFaturamento };
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#021017] to-[#05202B] font-sans text-white pb-12 selection:bg-[#00D4C5]/30">
+    <div className="min-h-screen bg-gradient-to-br from-[#021017] to-[#05202B] font-sans text-white pb-12 selection:bg-[#00D4C5]/30 relative">
+      
+      {/* BOTÃO FLUTUANTE DE SALVAR DADOS MANUAIS */}
+      <button 
+        onClick={saveManualData}
+        className="fixed bottom-8 right-8 z-50 bg-[#00D4C5] text-[#010B1D] p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest"
+      >
+        {savingManual ? <Loader2 className="animate-spin" /> : <Save />}
+        <span>Salvar Alterações</span>
+      </button>
+
       <nav className="bg-[#0A2230]/80 backdrop-blur-xl border-b border-[#00D4C5]/10 px-8 py-5 sticky top-0 z-50 shadow-2xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-5">
@@ -595,7 +542,7 @@ const App = () => {
 
       <main className="max-w-7xl mx-auto p-8">
         
-        {/* SELETOR DE MÊS E ANO (ADICIONADO) */}
+        {/* SELETOR DE MÊS E ANO (GLOBAL) */}
         <div className="flex justify-end items-center gap-4 mb-8">
            <div className="flex items-center gap-2 bg-[#0B132B] px-4 py-2 rounded-xl border border-white/10">
               <Calendar size={16} className="text-[#00D4C5]" />
@@ -833,7 +780,11 @@ const App = () => {
                           </div>
 
                           <button
-                            onClick={() => closeVariable(name, "SDR", res.total)}
+                            onClick={() => closeVariable(name, "SDR", res.total, {
+                                achievement: res.atingimentoMeta,
+                                target: res.metaIndiv,
+                                realized: res.totalReunioesRealizadas
+                            })}
                             className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-cyan-500/20 uppercase tracking-widest text-[11px]"
                           >
                             <Lock size={18} /> Fechar Variável
@@ -1034,7 +985,11 @@ const App = () => {
                         </div>
 
                         <button
-                          onClick={() => closeVariable(name, "Closer", res.total)}
+                          onClick={() => closeVariable(name, "Closer", res.total, {
+                              achievement: res.atingimentoIndiv,
+                              target: res.metaIndiv,
+                              realized: res.fatIndiv
+                          })}
                           className="w-full mt-10 bg-[#00C9C8] text-[#010B1D] font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-cyan-500/20 uppercase tracking-widest text-[11px]"
                         >
                           <Lock size={18} /> Fechar Variável
@@ -1268,7 +1223,10 @@ const App = () => {
                     <thead className="bg-[#0B132B] font-black text-[10px] text-slate-500 uppercase tracking-[0.2em]">
                       <tr>
                         <th className="px-8 py-5">Colaborador</th>
-                        <th className="px-8 py-5">Área / Cargo</th>
+                        <th className="px-8 py-5">Cargo</th>
+                        <th className="px-8 py-5 text-right">Meta</th>
+                        <th className="px-8 py-5 text-right">Realizado</th>
+                        <th className="px-8 py-5 text-center">Ating. %</th>
                         <th className="px-8 py-5 text-right">Variável</th>
                         <th className="px-8 py-5 text-center">Ações</th>
                       </tr>
@@ -1279,6 +1237,15 @@ const App = () => {
                           <td className="px-8 py-5 text-white font-bold">{v.name}</td>
                           <td className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">
                             {v.role}
+                          </td>
+                          <td className="px-8 py-5 text-right text-slate-400">
+                             {v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-"}
+                          </td>
+                          <td className="px-8 py-5 text-right text-white font-bold">
+                             {v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-"}
+                          </td>
+                          <td className="px-8 py-5 text-center text-[#00C9C8] font-black">
+                             {v.achievement ? `${v.achievement.toFixed(1)}%` : "-"}
                           </td>
                           <td className="px-8 py-5 text-right font-black text-emerald-400">
                             {formatCurrency(v.value)}
@@ -1297,7 +1264,7 @@ const App = () => {
                       {goals.closedVariables.length === 0 && (
                         <tr>
                           <td
-                            colSpan="4"
+                            colSpan="7"
                             className="py-24 text-center text-slate-500 font-black italic tracking-widest text-[10px]"
                           >
                             Aguardando fechamento de variáveis para consolidar...
@@ -1320,7 +1287,10 @@ const App = () => {
                   </h4>
                   <p className="text-2xl font-black tracking-tight mb-8">Consolidar Período</p>
 
-                  <button className="w-full bg-[#00C9C8] py-5 rounded-2xl font-black text-[#010B1D] text-sm hover:bg-cyan-400 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3">
+                  <button 
+                    onClick={exportReport}
+                    className="w-full bg-[#00C9C8] py-5 rounded-2xl font-black text-[#010B1D] text-sm hover:bg-cyan-400 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3"
+                  >
                     <Download size={20} /> Exportar Relatório
                   </button>
                 </div>
