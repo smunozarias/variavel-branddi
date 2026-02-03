@@ -1,25 +1,18 @@
 import React, { useState, useMemo, useEffect } from "react";
+import * as XLSX from "xlsx";
+import { createClient } from '@supabase/supabase-js';
 import {
-  Calculator,
-  Upload,
-  Search,
-  DollarSign,
-  Activity,
-  Award,
-  Sliders,
-  Trash2,
-  Lock,
-  Edit2,
-  Target,
-  TrendingUp,
-  UserCheck,
-  ClipboardList,
-  Settings2,
-  Download,
-  Star,
+  Calculator, Upload, Search, DollarSign, Activity, Award,
+  Sliders, Trash2, Lock, Edit2, Target, TrendingUp, UserCheck,
+  ClipboardList, Settings2, Download, Star, Cloud, Loader2, Calendar
 } from "lucide-react";
 
-// --- Funções Utilitárias Globais ---
+// --- CONFIGURAÇÃO SUPABASE ---
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// --- FUNÇÕES UTILITÁRIAS GLOBAIS ---
 const formatCurrency = (val) => {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -27,18 +20,7 @@ const formatCurrency = (val) => {
   }).format(val || 0);
 };
 
-// --- Biblioteca XLSX via CDN ---
-const loadXLSX = () => {
-  return new Promise((resolve) => {
-    if (window.XLSX) return resolve(window.XLSX);
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-    script.onload = () => resolve(window.XLSX);
-    document.head.appendChild(script);
-  });
-};
-
-// --- Componentes Auxiliares ---
+// --- COMPONENTES AUXILIARES (VISUAL ORIGINAL) ---
 const StatCard = ({ label, value, sub, icon }) => (
   <div className="bg-[#0A2230]/60 backdrop-blur-md p-7 rounded-[2rem] border border-[#00D4C5]/20 shadow-xl hover:border-[#00D4C5] transition-all group relative overflow-hidden">
     <div className="absolute top-0 right-0 w-24 h-24 bg-[#00D4C5]/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
@@ -125,14 +107,20 @@ const RuleColumn = ({
 // --- APP PRINCIPAL ---
 const App = () => {
   const [activeTab, setActiveTab] = useState("DASHBOARD");
-  const [reportTitle, setReportTitle] = useState("Janeiro 2025");
-  const [selectedPerson, setSelectedPerson] = useState("");
+  
+  // --- ADIÇÃO: ESTADOS DE DATA E NUVEM ---
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [reportTitle, setReportTitle] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
+  const [selectedPerson, setSelectedPerson] = useState("");
   const [vendasRaw, setVendasRaw] = useState([]);
   const [reunioesRaw, setReunioesRaw] = useState([]);
-  const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
+  const [isLibraryLoaded, setIsLibraryLoaded] = useState(true); // Mantido true pois estamos importando direto
 
-  // --- REGRAS ---
+  // --- REGRAS (ORIGINAIS) ---
   const [rules, setRules] = useState({
     bonusUniversal: [
       { min: 120, val: 750 },
@@ -186,36 +174,26 @@ const App = () => {
     produto: {
       bonusFaturamento: [
         { min: 120, val: 600 },
-        { min: 100, val: 450 },
-        { min: 80, val: 350 },
+        { min: 100, val: 450 }, { min: 80, val: 350 },
       ],
       bonusVolumeReunioes: [
-        { min: 120, val: 600 },
-        { min: 100, val: 450 },
-        { min: 80, val: 350 },
+        { min: 120, val: 600 }, { min: 100, val: 450 }, { min: 80, val: 350 },
       ],
       bonusMetaEquipe: [
-        { min: 100, val: 1125 },
-        { min: 80, val: 900 },
+        { min: 100, val: 1125 }, { min: 80, val: 900 },
       ],
       comissaoFatPerc: 0.006,
       overrideQualificacaoPerc: 0.1,
     },
     ldr: {
       bonusReunioes: [
-        { min: 120, val: 250 },
-        { min: 100, val: 200 },
-        { min: 80, val: 150 },
+        { min: 120, val: 250 }, { min: 100, val: 200 }, { min: 80, val: 150 },
       ],
       bonusGarimpados: [
-        { min: 100, val: 400 },
-        { min: 80, val: 250 },
-        { min: 50, val: 150 },
+        { min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 },
       ],
       bonusCards: [
-        { min: 100, val: 400 },
-        { min: 80, val: 250 },
-        { min: 50, val: 150 },
+        { min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 },
       ],
     },
   });
@@ -240,43 +218,100 @@ const App = () => {
     ldrStats: { garimpados: 0, cards: 0, garimpadosMeta: 100, cardsMeta: 20 },
   });
 
+  // Atualiza título do relatório
   useEffect(() => {
-    loadXLSX().then(() => setIsLibraryLoaded(true));
-  }, []);
+    const date = new Date(selectedYear, selectedMonth - 1, 1);
+    setReportTitle(date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' }));
+  }, [selectedMonth, selectedYear]);
 
-  // --- Motor de Processamento Numérico (Protegido Versão 5.1) ---
+  // --- LOGICA SUPABASE ---
+  const getFileName = (type) => `${type}_${selectedMonth}_${selectedYear}`; // Ex: VENDAS_3_2024
+
+  useEffect(() => {
+    const fetchSavedData = async () => {
+      setLoading(true);
+      // Limpa dados ao trocar mês
+      setVendasRaw([]);
+      setReunioesRaw([]);
+
+      try {
+        const vendasName = getFileName("VENDAS");
+        const reunioesName = getFileName("REUNIOES");
+
+        const { data: vendasData } = await supabase.storage.from('planilhas').download(vendasName);
+        if (vendasData) await processFile(vendasData, "VENDAS");
+
+        const { data: reunioesData } = await supabase.storage.from('planilhas').download(reunioesName);
+        if (reunioesData) await processFile(reunioesData, "REUNIOES");
+      } catch (error) {
+        // Silencioso se não existir arquivo
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSavedData();
+  }, [selectedMonth, selectedYear]);
+
+  const processFile = async (blob, type) => {
+    const arrayBuffer = await blob.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: "array" });
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+    if (type === "VENDAS") setVendasRaw(rows);
+    if (type === "REUNIOES") setReunioesRaw(rows);
+  };
+
+  const handleFileUpload = async (e, type) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      // 1. Processa local (visualização imediata)
+      await processFile(file, type);
+      
+      // 2. Salva na nuvem
+      const fileName = getFileName(type);
+      const { error } = await supabase.storage.from('planilhas').upload(fileName, file, { upsert: true });
+
+      if (error) throw error;
+      alert(`Arquivo salvo com sucesso para ${selectedMonth}/${selectedYear}!`);
+    } catch (err) {
+      console.error("Erro upload:", err);
+      alert("Erro ao salvar. Verifique se o bucket 'planilhas' existe e é público no Supabase.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // --- MOTOR DE PROCESSAMENTO NUMÉRICO (ORIGINAL + AJUSTES PARA SEUS CSVs) ---
   const parseNum = (val, isScore = false) => {
     if (val === undefined || val === null || val === "") return 0;
     if (typeof val === "number") return val;
-    let s = val.toString().replace("R$", "").replace(/[^\d.,-]/g, "").trim();
+    let s = val.toString().trim().replace("R$", "").trim();
+    
     const lastComma = s.lastIndexOf(",");
     const lastDot = s.lastIndexOf(".");
-    if (lastComma > lastDot) s = s.replace(/\./g, "").replace(",", ".");
-    else if (lastDot > lastComma) {
-      const parts = s.split(".");
-      if (parts.length > 1 && parts[parts.length - 1].length === 3 && !isScore) s = s.replace(/\./g, "");
-      s = s.replace(/,/g, "");
-    }
+    
+    // Detecção automática BR vs US
+    if (lastComma > lastDot) s = s.replace(/\./g, "").replace(",", "."); // 1.000,00 -> 1000.00
+    else if (lastDot > lastComma) s = s.replace(/,/g, ""); // 1,000.00 -> 1000.00
+    
     return parseFloat(s) || 0;
   };
 
   const extractValue = (row, key) => {
     const keys = Object.keys(row);
+    // Mapeamento baseado nos seus arquivos
     const map = {
-      sdr: ["negócio - sdr", "sdr", "sdr responsável", "negocio - sdr"],
-      proprietario: ["negócio - proprietário", "proprietário", "closer", "negocio - proprietario"],
-      valor: ["negócio - valor do negócio", "valor do negócio", "valor", "negocio - valor"],
-      soma: ["soma total", "score", "soma"],
-      nome: ["organização - nome", "nome", "titulo"],
+      sdr: ["Negócio - SDR", "sdr", "sdr responsável", "Atividade - Proprietário", "Proprietário da atividade"],
+      proprietario: ["Negócio - Proprietário", "Proprietário", "closer", "proprietario"],
+      valor: ["Negócio - Valor do negócio", "Valor", "Amount"],
+      soma: ["Soma TOTAL", "soma total", "score"],
+      nome: ["Organização - Nome", "Negócio - Nome do negócio", "Nome", "cliente", "titulo"],
     };
     const targets = map[key.toLowerCase()] || [key.toLowerCase()];
     for (let sk of targets) {
-      const found = keys.find((k) =>
-        k
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "")
-          .includes(sk.toLowerCase().replace(/[^a-z0-9]/g, ""))
-      );
+      const found = keys.find((k) => k.toLowerCase().trim() === sk.toLowerCase().trim());
       if (found) return row[found];
     }
     return undefined;
@@ -291,38 +326,24 @@ const App = () => {
     return nA && nB && (nA.includes(nB) || nB.includes(nA));
   };
 
-  const handleFileUpload = (e, type) => {
-    if (!isLibraryLoaded || !window.XLSX) return;
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const data = new Uint8Array(event.target.result);
-      const workbook = window.XLSX.read(data, { type: "array" });
-      const rows = window.XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
-      if (type === "VENDAS") setVendasRaw(rows);
-      if (type === "REUNIOES") setReunioesRaw(rows);
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
   // --- STORE ---
   const dataStore = useMemo(() => {
     const calculatedRevenue = vendasRaw.reduce((acc, v) => acc + parseNum(extractValue(v, "valor")), 0);
     const faturamentoTimeReal = goals.timeRealManual !== "" ? parseNum(goals.timeRealManual) : calculatedRevenue;
-    const atingimentoTime = (faturamentoTimeReal / goals.timeMeta) * 100;
+    const atingimentoTime = goals.timeMeta > 0 ? (faturamentoTimeReal / goals.timeMeta) * 100 : 0;
 
     const sdrsSet = new Set();
     reunioesRaw.forEach((r) => sdrsSet.add(extractValue(r, "sdr")));
     vendasRaw.forEach((v) => sdrsSet.add(extractValue(v, "sdr")));
 
     const closers = [...new Set(vendasRaw.map((v) => extractValue(v, "proprietario")))].filter(Boolean).sort();
+    // Garante array limpo de SDRs
+    const sdrs = [...sdrsSet].filter(Boolean).sort();
 
     return {
       faturamentoTimeReal,
       atingimentoTime,
-      people: { sdrs: [...sdrsSet].filter(Boolean).sort(), closers },
+      people: { sdrs, closers },
       totalMeetings: reunioesRaw.length,
       totalDeals: vendasRaw.length,
     };
@@ -369,7 +390,7 @@ const App = () => {
     const myVendasRaw = vendasRaw.filter((v) => isSamePerson(extractValue(v, "sdr"), name));
 
     const metaIndiv = goals.individualSdrGoals[name] || goals.sdrMetaDefault;
-    const atingimentoMeta = (myReunioes.length / metaIndiv) * 100;
+    const atingimentoMeta = metaIndiv > 0 ? (myReunioes.length / metaIndiv) * 100 : 0;
 
     const v1 = getTierValue(rules.sdr.t1MetaReunioes, atingimentoMeta, "perc")?.val || 0;
 
@@ -377,7 +398,7 @@ const App = () => {
     const v2 = universal * (Math.min(atingimentoMeta, 100) / 100);
 
     const meetingsDetails = myReunioes.map((r) => ({
-      name: extractValue(r, "nome") || "Lead",
+      name: extractValue(r, "nome") || "Lead/Cliente",
       score: parseNum(extractValue(r, "soma"), true),
       bonus: getTierValue(rules.sdr.t3Qualificacao, parseNum(extractValue(r, "soma"), true), "min")?.val || 0,
     }));
@@ -421,7 +442,7 @@ const App = () => {
     const fatIndiv = myVendasRaw.reduce((acc, v) => acc + parseNum(extractValue(v, "valor")), 0);
 
     const metaIndiv = goals.individualCloserGoals[name] || goals.closerMetaBase;
-    const atingimentoIndiv = (fatIndiv / metaIndiv) * 100;
+    const atingimentoIndiv = metaIndiv > 0 ? (fatIndiv / metaIndiv) * 100 : 0;
 
     let key =
       dataStore.atingimentoTime >= 120 ? "supermeta" : dataStore.atingimentoTime >= 100 ? "meta" : "abaixo";
@@ -464,7 +485,7 @@ const App = () => {
     const cfg = rules[role];
 
     const atingimentoFat = dataStore.atingimentoTime;
-    const atingimentoVol = (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100;
+    const atingimentoVol = goals.meetingsMetaTotal > 0 ? (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100 : 0;
 
     const v1 = getTierValue(cfg.bonusFaturamento, atingimentoFat, "min")?.val || 0;
     const v2 = getTierValue(cfg.bonusVolumeReunioes, atingimentoVol, "min")?.val || 0;
@@ -497,7 +518,7 @@ const App = () => {
   const calculateLDR = () => {
     const stats = goals.ldrStats;
 
-    const atingimentoReunioes = (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100;
+    const atingimentoReunioes = goals.meetingsMetaTotal > 0 ? (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100 : 0;
     const atingimentoFaturamento = dataStore.atingimentoTime;
 
     const atingimentoGarimpados = stats.garimpadosMeta > 0 ? (stats.garimpados / stats.garimpadosMeta) * 100 : 0;
@@ -519,10 +540,7 @@ const App = () => {
     const vExtra = extras.reduce((a, b) => a + b.val, 0);
 
     return {
-      v1,
-      v2,
-      v3,
-      v4,
+      v1, v2, v3, v4,
       total: v1 + v2 + v3 + v4 + vExtra,
       extras,
       atingimentoGarimpados,
@@ -541,12 +559,15 @@ const App = () => {
               <Calculator size={24} />
             </div>
             <div>
-              <input
-                type="text"
-                value={reportTitle}
-                onChange={(e) => setReportTitle(e.target.value)}
-                className="text-xl font-black tracking-tight bg-transparent border-none p-0 focus:ring-0 w-full outline-none"
-              />
+              <div className="flex items-center gap-3">
+                 <input
+                  type="text"
+                  value={reportTitle}
+                  readOnly
+                  className="text-xl font-black tracking-tight bg-transparent border-none p-0 focus:ring-0 w-64 outline-none capitalize"
+                />
+                 {loading && <Loader2 size={16} className="animate-spin text-[#00D4C5]" />}
+              </div>
               <p className="text-[10px] text-[#00D4C5] font-black uppercase tracking-[0.3em] mt-1">
                 Variável Comercial Branddi
               </p>
@@ -573,6 +594,32 @@ const App = () => {
       </nav>
 
       <main className="max-w-7xl mx-auto p-8">
+        
+        {/* SELETOR DE MÊS E ANO (ADICIONADO) */}
+        <div className="flex justify-end items-center gap-4 mb-8">
+           <div className="flex items-center gap-2 bg-[#0B132B] px-4 py-2 rounded-xl border border-white/10">
+              <Calendar size={16} className="text-[#00D4C5]" />
+              <select 
+                value={selectedMonth} 
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
+              >
+                {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                  <option key={m} value={m} className="bg-[#0B132B]">{new Date(0, m-1).toLocaleString('pt-BR', {month: 'long'})}</option>
+                ))}
+              </select>
+              <select 
+                value={selectedYear} 
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
+              >
+                {[2024, 2025, 2026, 2027].map(y => (
+                  <option key={y} value={y} className="bg-[#0B132B]">{y}</option>
+                ))}
+              </select>
+           </div>
+        </div>
+
         {/* DASHBOARD */}
         {activeTab === "DASHBOARD" && (
           <div className="space-y-10 animate-in fade-in duration-500">
@@ -597,13 +644,13 @@ const App = () => {
               <StatCard
                 label="Total Reuniões"
                 value={dataStore.totalMeetings}
-                sub={`${((dataStore.totalMeetings / goals.meetingsMetaTotal) * 100).toFixed(1)}% do esperado`}
+                sub={`${goals.meetingsMetaTotal > 0 ? ((dataStore.totalMeetings / goals.meetingsMetaTotal) * 100).toFixed(1) : 0}% do esperado`}
                 icon={<Activity size={20} />}
               />
               <StatCard
                 label="Total Deals"
                 value={dataStore.totalDeals}
-                sub={`${((dataStore.totalDeals / goals.dealsMetaTotal) * 100).toFixed(1)}% de conversão`}
+                sub={`${goals.dealsMetaTotal > 0 ? ((dataStore.totalDeals / goals.dealsMetaTotal) * 100).toFixed(1) : 0}% de conversão`}
                 icon={<Award size={20} />}
               />
             </div>
@@ -628,7 +675,6 @@ const App = () => {
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fat. Real Manual</label>
                   <input
                     type="text"
-                    placeholder="149400"
                     value={goals.timeRealManual}
                     onChange={(e) => setGoals({ ...goals, timeRealManual: e.target.value })}
                     className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-white outline-none ring-1 ring-white/10"
@@ -669,42 +715,39 @@ const App = () => {
               <div className="flex flex-col sm:flex-row gap-6 border-t border-white/5 pt-10">
                 <label
                   className={`flex-1 flex items-center justify-center gap-3 bg-white/5 text-white p-5 rounded-2xl font-black text-[11px] uppercase tracking-widest cursor-pointer transition-all border border-white/5 active:scale-95 ${
-                    isLibraryLoaded ? "hover:bg-white/10" : "opacity-40 cursor-not-allowed"
+                    uploading ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"
                   }`}
                 >
-                  <Upload size={18} className="text-[#00C9C8]" />
-                  <span>Importar Vendas</span>
+                   {uploading ? <Loader2 className="animate-spin text-[#00C9C8]" /> : <Cloud size={18} className="text-[#00C9C8]" />}
+                  <span>Importar Vendas (Deals)</span>
                   <input
                     type="file"
                     className="hidden"
                     accept=".xlsx,.csv"
-                    disabled={!isLibraryLoaded}
+                    disabled={uploading}
                     onChange={(e) => handleFileUpload(e, "VENDAS")}
                   />
                 </label>
 
                 <label
                   className={`flex-1 flex items-center justify-center gap-3 bg-white/5 text-white p-5 rounded-2xl font-black text-[11px] uppercase tracking-widest cursor-pointer transition-all border border-white/5 active:scale-95 ${
-                    isLibraryLoaded ? "hover:bg-white/10" : "opacity-40 cursor-not-allowed"
+                    uploading ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"
                   }`}
                 >
-                  <Upload size={18} className="text-[#00C9C8]" />
-                  <span>Importar Reuniões</span>
+                   {uploading ? <Loader2 className="animate-spin text-[#00C9C8]" /> : <Cloud size={18} className="text-[#00C9C8]" />}
+                  <span>Importar Reuniões (Activities)</span>
                   <input
                     type="file"
                     className="hidden"
                     accept=".xlsx,.csv"
-                    disabled={!isLibraryLoaded}
+                    disabled={uploading}
                     onChange={(e) => handleFileUpload(e, "REUNIOES")}
                   />
                 </label>
               </div>
-
-              {!isLibraryLoaded && (
-                <p className="mt-6 text-xs text-slate-400 font-bold uppercase tracking-widest">
-                  Carregando biblioteca XLSX...
-                </p>
-              )}
+               <p className="mt-4 text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                Os arquivos serão salvos para {reportTitle}. Se mudar o mês no topo, os dados serão recarregados.
+              </p>
             </div>
           </div>
         )}
@@ -1027,13 +1070,104 @@ const App = () => {
           </div>
         )}
 
-        {/* GESTOR E PRODUCT */}
-        {(activeTab === "GESTOR" || activeTab === "PRODUCT") && (
+        {/* GESTOR E PRODUCT E LDR */}
+        {(activeTab === "GESTOR" || activeTab === "PRODUCT" || activeTab === "LDR") && (
           <div className="space-y-10 animate-in fade-in duration-500">
             {(() => {
-              const role = activeTab === "GESTOR" ? "gestor" : "produto";
-              const res = calculateManagement(role);
-              const name = goals.customNames[role];
+              let res, roleName;
+              if (activeTab === "GESTOR") {
+                res = calculateManagement("gestor");
+                roleName = "Gestor";
+              } else if (activeTab === "PRODUCT") {
+                res = calculateManagement("produto");
+                roleName = "Produto";
+              } else {
+                res = calculateLDR();
+                roleName = "LDR";
+              }
+              
+              const name = goals.customNames[activeTab === "PRODUCT" ? "produto" : activeTab.toLowerCase()] || roleName;
+              
+              // Ajuste específico para LDR
+              if(activeTab === "LDR") {
+                  return (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                    <div className="lg:col-span-4 space-y-8">
+                      <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden ring-1 ring-white/10 border border-[#00D4C5]/20">
+                        <p className="text-amber-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
+                          Demonstrativo LDR
+                        </p>
+                        <div className="flex items-center gap-2 mb-10 group">
+                          <input type="text" value={name} onChange={(e) => setGoals({ ...goals, customNames: { ...goals.customNames, ldr: e.target.value } })} className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight" />
+                          <Edit2 size={16} className="text-white/20 group-hover:text-amber-400" />
+                        </div>
+                        <div className="space-y-6">
+                          <SummaryItem label="Variável Total LDR" value={res.total} highlight />
+                          <SummaryItem label="1. Meta Reuniões" value={res.v1} />
+                          <SummaryItem label="2. Bônus Contatos" value={res.v2} />
+                          <SummaryItem label="3. Cards Qualificados" value={res.v3} />
+                          <SummaryItem label="4. Bônus Equipe" value={res.v4} />
+
+                          <div className="pt-6 border-t border-white/5">
+                            <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
+                              Bônus Extras (Manual)
+                            </p>
+                            {res.extras.map((ex, i) => (
+                              <div key={i} className="flex gap-2 mb-2">
+                                <input type="text" value={ex.label} onChange={(e) => updateExtraValue(name, i, "label", e.target.value)} className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white" />
+                                <input type="number" value={ex.val || ""} onChange={(e) => updateExtraValue(name, i, "val", e.target.value)} className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right" />
+                              </div>
+                            ))}
+                          </div>
+
+                          <button onClick={() => closeVariable(name, "LDR", res.total)} className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]">
+                            <Lock size={18} /> Fechar Variável
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="lg:col-span-8 space-y-8">
+                      <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-2xl">
+                        <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-10 flex items-center gap-3 text-[#00D4C5] border-b border-white/5 pb-6">
+                          <UserCheck size={20} /> Gestão de Dados LDR
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                          <div className="space-y-6">
+                            <div>
+                              <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
+                                Contatos Garimpados
+                              </label>
+                              <div className="flex gap-4">
+                                <input type="number" placeholder="Real" value={goals.ldrStats.garimpados} onChange={(e) => setGoals({ ...goals, ldrStats: { ...goals.ldrStats, garimpados: parseNum(e.target.value) } })} className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none" />
+                                <input type="number" placeholder="Meta" value={goals.ldrStats.garimpadosMeta} onChange={(e) => setGoals({ ...goals, ldrStats: { ...goals.ldrStats, garimpadosMeta: parseNum(e.target.value) } })} className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none" />
+                              </div>
+                            </div>
+                            <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
+                              <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
+                              <span className="text-2xl font-black text-cyan-400">{res.atingimentoGarimpados.toFixed(1)}%</span>
+                            </div>
+                          </div>
+                          <div className="space-y-6">
+                            <div>
+                              <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
+                                Cards Qualificados
+                              </label>
+                              <div className="flex gap-4">
+                                <input type="number" placeholder="Real" value={goals.ldrStats.cards} onChange={(e) => setGoals({ ...goals, ldrStats: { ...goals.ldrStats, cards: parseNum(e.target.value) } })} className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none" />
+                                <input type="number" placeholder="Meta" value={goals.ldrStats.cardsMeta} onChange={(e) => setGoals({ ...goals, ldrStats: { ...goals.ldrStats, cardsMeta: parseNum(e.target.value) } })} className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none" />
+                              </div>
+                            </div>
+                            <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
+                              <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
+                              <span className="text-2xl font-black text-indigo-400">{res.atingimentoCards.toFixed(1)}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  );
+              }
 
               return (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
@@ -1110,165 +1244,6 @@ const App = () => {
           </div>
         )}
 
-        {/* LDR */}
-        {activeTab === "LDR" && (
-          <div className="space-y-10 animate-in fade-in duration-500">
-            {(() => {
-              const res = calculateLDR();
-              const name = goals.customNames.ldr;
-
-              return (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                  <div className="lg:col-span-4 space-y-8">
-                    <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden ring-1 ring-white/10 border border-[#00D4C5]/20">
-                      <p className="text-amber-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
-                        Demonstrativo LDR
-                      </p>
-
-                      <div className="flex items-center gap-2 mb-10 group">
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) =>
-                            setGoals({ ...goals, customNames: { ...goals.customNames, ldr: e.target.value } })
-                          }
-                          className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
-                        />
-                        <Edit2 size={16} className="text-white/20 group-hover:text-amber-400" />
-                      </div>
-
-                      <div className="space-y-6">
-                        <SummaryItem label="Variável Total LDR" value={res.total} highlight />
-                        <SummaryItem label="1. Meta Reuniões" value={res.v1} />
-                        <SummaryItem label="2. Bônus Contatos" value={res.v2} />
-                        <SummaryItem label="3. Cards Qualificados" value={res.v3} />
-                        <SummaryItem label="4. Bônus Equipe" value={res.v4} />
-
-                        <div className="pt-6 border-t border-white/5">
-                          <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
-                            Bônus Extras (Manual)
-                          </p>
-                          {res.extras.map((ex, i) => (
-                            <div key={i} className="flex gap-2 mb-2">
-                              <input
-                                type="text"
-                                value={ex.label}
-                                onChange={(e) => updateExtraValue(name, i, "label", e.target.value)}
-                                className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white"
-                              />
-                              <input
-                                type="number"
-                                value={ex.val || ""}
-                                onChange={(e) => updateExtraValue(name, i, "val", e.target.value)}
-                                className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          onClick={() => closeVariable(name, "LDR", res.total)}
-                          className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]"
-                        >
-                          <Lock size={18} /> Fechar Variável
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="lg:col-span-8 space-y-8">
-                    <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-2xl">
-                      <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-10 flex items-center gap-3 text-[#00D4C5] border-b border-white/5 pb-6">
-                        <UserCheck size={20} /> Gestão de Dados LDR
-                      </h3>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                        <div className="space-y-6">
-                          <div>
-                            <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
-                              Contatos Garimpados
-                            </label>
-                            <div className="flex gap-4">
-                              <input
-                                type="number"
-                                placeholder="Real"
-                                value={goals.ldrStats.garimpados}
-                                onChange={(e) =>
-                                  setGoals({
-                                    ...goals,
-                                    ldrStats: { ...goals.ldrStats, garimpados: parseNum(e.target.value) },
-                                  })
-                                }
-                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none"
-                              />
-                              <input
-                                type="number"
-                                placeholder="Meta"
-                                value={goals.ldrStats.garimpadosMeta}
-                                onChange={(e) =>
-                                  setGoals({
-                                    ...goals,
-                                    ldrStats: { ...goals.ldrStats, garimpadosMeta: parseNum(e.target.value) },
-                                  })
-                                }
-                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
-                            <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
-                            <span className="text-2xl font-black text-cyan-400">{res.atingimentoGarimpados.toFixed(1)}%</span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-6">
-                          <div>
-                            <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
-                              Cards Qualificados
-                            </label>
-                            <div className="flex gap-4">
-                              <input
-                                type="number"
-                                placeholder="Real"
-                                value={goals.ldrStats.cards}
-                                onChange={(e) =>
-                                  setGoals({
-                                    ...goals,
-                                    ldrStats: { ...goals.ldrStats, cards: parseNum(e.target.value) },
-                                  })
-                                }
-                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none"
-                              />
-                              <input
-                                type="number"
-                                placeholder="Meta"
-                                value={goals.ldrStats.cardsMeta}
-                                onChange={(e) =>
-                                  setGoals({
-                                    ...goals,
-                                    ldrStats: { ...goals.ldrStats, cardsMeta: parseNum(e.target.value) },
-                                  })
-                                }
-                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
-                            <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
-                            <span className="text-2xl font-black text-indigo-400">{res.atingimentoCards.toFixed(1)}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
         {/* FECHAMENTO */}
         {activeTab === "FECHAMENTO" && (
           <div className="space-y-10 animate-in fade-in">
@@ -1321,7 +1296,10 @@ const App = () => {
 
                       {goals.closedVariables.length === 0 && (
                         <tr>
-                          <td colSpan="4" className="py-24 text-center text-slate-500 font-black italic tracking-widest text-[10px]">
+                          <td
+                            colSpan="4"
+                            className="py-24 text-center text-slate-500 font-black italic tracking-widest text-[10px]"
+                          >
                             Aguardando fechamento de variáveis para consolidar...
                           </td>
                         </tr>
