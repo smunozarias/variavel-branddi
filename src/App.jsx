@@ -269,14 +269,13 @@ const App = () => {
     }
   };
 
-  // --- EXPORTAR RELATÓRIO (NOVA FUNÇÃO) ---
+  // --- EXPORTAR RELATÓRIO ---
   const exportReport = () => {
     if (goals.closedVariables.length === 0) {
       alert("Não há dados fechados para exportar.");
       return;
     }
 
-    // Prepara os dados para o Excel com as novas colunas
     const dataToExport = goals.closedVariables.map(v => ({
         "Mês": reportTitle,
         "Colaborador": v.name,
@@ -358,7 +357,6 @@ const App = () => {
   const removeClosed = (id) =>
     setGoals((prev) => ({ ...prev, closedVariables: prev.closedVariables.filter((v) => v.id !== id) }));
 
-  // ATUALIZADO: Aceita dados extras (meta, realizado, atingimento)
   const closeVariable = (name, role, value, extras = {}) => {
     setGoals((prev) => ({
       ...prev,
@@ -370,7 +368,7 @@ const App = () => {
             role, 
             value, 
             date: new Date().toLocaleDateString(),
-            ...extras // Espalha os dados extras aqui
+            ...extras 
         },
       ],
     }));
@@ -470,21 +468,34 @@ const App = () => {
     return { v1, v2, v3, v4, v5, total: v1 + v2 + v3 + v4 + v5 + vExtra, totalQualifPaga, extras };
   };
 
-  // --- CALC LDR ---
+  // --- CALC LDR (CORRIGIDO) ---
   const calculateLDR = () => {
-    const stats = goals.ldrStats;
+    // PROTEÇÃO CONTRA DADOS ZERADOS
+    const stats = goals.ldrStats || { garimpados: 0, cards: 0, garimpadosMeta: 1, cardsMeta: 1 }; // Evita divisão por zero
     const atingimentoReunioes = goals.meetingsMetaTotal > 0 ? (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100 : 0;
     const atingimentoFaturamento = dataStore.atingimentoTime;
+    
     const atingimentoGarimpados = stats.garimpadosMeta > 0 ? (stats.garimpados / stats.garimpadosMeta) * 100 : 0;
     const atingimentoCards = stats.cardsMeta > 0 ? (stats.cards / stats.cardsMeta) * 100 : 0;
+
     const v1 = getTierValue(rules.ldr.bonusReunioes, atingimentoReunioes, "min")?.val || 0;
     const v2 = getTierValue(rules.ldr.bonusGarimpados, atingimentoGarimpados, "min")?.val || 0;
     const v3 = getTierValue(rules.ldr.bonusCards, atingimentoCards, "min")?.val || 0;
     const v4 = getTierValue(rules.bonusUniversal, atingimentoFaturamento, "min")?.val || 0;
+
     const name = goals.customNames.ldr;
     const extras = goals.individualExtras[name] || [{ label: "Bônus 1", val: 0 }, { label: "Bônus 2", val: 0 }, { label: "Bônus 3", val: 0 }];
     const vExtra = extras.reduce((a, b) => a + b.val, 0);
-    return { v1, v2, v3, v4, total: v1 + v2 + v3 + v4 + vExtra, extras, atingimentoGarimpados, atingimentoCards, atingimentoReunioes, atingimentoFaturamento };
+
+    return { 
+        v1, v2, v3, v4, 
+        total: v1 + v2 + v3 + v4 + vExtra, 
+        extras, 
+        atingimentoGarimpados, 
+        atingimentoCards, 
+        atingimentoReunioes, 
+        atingimentoFaturamento 
+    };
   };
 
   return (
@@ -1025,105 +1036,12 @@ const App = () => {
           </div>
         )}
 
-        {/* GESTOR E PRODUCT E LDR */}
-        {(activeTab === "GESTOR" || activeTab === "PRODUCT" || activeTab === "LDR") && (
+        {/* GESTOR */}
+        {activeTab === "GESTOR" && (
           <div className="space-y-10 animate-in fade-in duration-500">
             {(() => {
-              let res, roleName;
-              if (activeTab === "GESTOR") {
-                res = calculateManagement("gestor");
-                roleName = "Gestor";
-              } else if (activeTab === "PRODUCT") {
-                res = calculateManagement("produto");
-                roleName = "Produto";
-              } else {
-                res = calculateLDR();
-                roleName = "LDR";
-              }
-              
-              const name = goals.customNames[activeTab === "PRODUCT" ? "produto" : activeTab.toLowerCase()] || roleName;
-              
-              // Ajuste específico para LDR
-              if(activeTab === "LDR") {
-                  return (
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                    <div className="lg:col-span-4 space-y-8">
-                      <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden ring-1 ring-white/10 border border-[#00D4C5]/20">
-                        <p className="text-amber-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
-                          Demonstrativo LDR
-                        </p>
-                        <div className="flex items-center gap-2 mb-10 group">
-                          <input type="text" value={name} onChange={(e) => setGoals({ ...goals, customNames: { ...goals.customNames, ldr: e.target.value } })} className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight" />
-                          <Edit2 size={16} className="text-white/20 group-hover:text-amber-400" />
-                        </div>
-                        <div className="space-y-6">
-                          <SummaryItem label="Variável Total LDR" value={res.total} highlight />
-                          <SummaryItem label="1. Meta Reuniões" value={res.v1} />
-                          <SummaryItem label="2. Bônus Contatos" value={res.v2} />
-                          <SummaryItem label="3. Cards Qualificados" value={res.v3} />
-                          <SummaryItem label="4. Bônus Equipe" value={res.v4} />
-
-                          <div className="pt-6 border-t border-white/5">
-                            <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
-                              Bônus Extras (Manual)
-                            </p>
-                            {res.extras.map((ex, i) => (
-                              <div key={i} className="flex gap-2 mb-2">
-                                <input type="text" value={ex.label} onChange={(e) => updateExtraValue(name, i, "label", e.target.value)} className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white" />
-                                <input type="number" value={ex.val || ""} onChange={(e) => updateExtraValue(name, i, "val", e.target.value)} className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right" />
-                              </div>
-                            ))}
-                          </div>
-
-                          <button onClick={() => closeVariable(name, "LDR", res.total)} className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]">
-                            <Lock size={18} /> Fechar Variável
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="lg:col-span-8 space-y-8">
-                      <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-2xl">
-                        <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-10 flex items-center gap-3 text-[#00D4C5] border-b border-white/5 pb-6">
-                          <UserCheck size={20} /> Gestão de Dados LDR
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                          <div className="space-y-6">
-                            <div>
-                              <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
-                                Contatos Garimpados
-                              </label>
-                              <div className="flex gap-4">
-                                <input type="number" placeholder="Real" value={goals.ldrStats.garimpados} onChange={(e) => setGoals({ ...goals, ldrStats: { ...goals.ldrStats, garimpados: parseNum(e.target.value) } })} className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none" />
-                                <input type="number" placeholder="Meta" value={goals.ldrStats.garimpadosMeta} onChange={(e) => setGoals({ ...goals, ldrStats: { ...goals.ldrStats, garimpadosMeta: parseNum(e.target.value) } })} className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none" />
-                              </div>
-                            </div>
-                            <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
-                              <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
-                              <span className="text-2xl font-black text-cyan-400">{res.atingimentoGarimpados.toFixed(1)}%</span>
-                            </div>
-                          </div>
-                          <div className="space-y-6">
-                            <div>
-                              <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
-                                Cards Qualificados
-                              </label>
-                              <div className="flex gap-4">
-                                <input type="number" placeholder="Real" value={goals.ldrStats.cards} onChange={(e) => setGoals({ ...goals, ldrStats: { ...goals.ldrStats, cards: parseNum(e.target.value) } })} className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none" />
-                                <input type="number" placeholder="Meta" value={goals.ldrStats.cardsMeta} onChange={(e) => setGoals({ ...goals, ldrStats: { ...goals.ldrStats, cardsMeta: parseNum(e.target.value) } })} className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none" />
-                              </div>
-                            </div>
-                            <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
-                              <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
-                              <span className="text-2xl font-black text-indigo-400">{res.atingimentoCards.toFixed(1)}%</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  );
-              }
-
+              const res = calculateManagement("gestor");
+              const name = goals.customNames["gestor"];
               return (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                   <div className="lg:col-span-4 space-y-8">
@@ -1137,7 +1055,7 @@ const App = () => {
                           type="text"
                           value={name}
                           onChange={(e) =>
-                            setGoals({ ...goals, customNames: { ...goals.customNames, [role]: e.target.value } })
+                            setGoals({ ...goals, customNames: { ...goals.customNames, gestor: e.target.value } })
                           }
                           className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
                         />
@@ -1175,7 +1093,7 @@ const App = () => {
                         </div>
 
                         <button
-                          onClick={() => closeVariable(name, activeTab, res.total)}
+                          onClick={() => closeVariable(name, "Gestor", res.total)}
                           className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]"
                         >
                           <Lock size={18} /> Fechar Variável
@@ -1199,29 +1117,272 @@ const App = () => {
           </div>
         )}
 
-        {/* FECHAMENTO */}
-        {activeTab === "FECHAMENTO" && (
-          <div className="space-y-10 animate-in fade-in">
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
-              <div className="lg:col-span-3 bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden">
-                <div className="flex justify-between items-center mb-10 border-b border-white/5 pb-8">
-                  <h3 className="text-lg font-black text-white tracking-tight flex items-center gap-4">
-                    <ClipboardList size={24} className="text-[#00C9C8]" /> Resumo do Fechamento: {reportTitle}
-                  </h3>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                      Total Variável Acumulado
-                    </p>
-                    <p className="text-4xl font-black text-[#00C9C8] tracking-tighter shadow-cyan-500/10">
-                      {formatCurrency(goals.closedVariables.reduce((acc, v) => acc + v.value, 0))}
+        {/* PRODUTO */}
+        {activeTab === "PRODUCT" && (
+          <div className="space-y-10 animate-in fade-in duration-500">
+            {(() => {
+              const res = calculateManagement("produto");
+              const name = goals.customNames["produto"];
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                  <div className="lg:col-span-4 space-y-8">
+                    <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl border border-white/10 relative overflow-hidden">
+                      <p className="text-violet-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
+                        Demonstrativo Produto
+                      </p>
+
+                      <div className="flex items-center gap-2 mb-10 group">
+                        <input
+                          type="text"
+                          value={name}
+                          onChange={(e) =>
+                            setGoals({ ...goals, customNames: { ...goals.customNames, produto: e.target.value } })
+                          }
+                          className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
+                        />
+                        <Edit2 size={16} className="text-white/20 group-hover:text-violet-400" />
+                      </div>
+
+                      <div className="space-y-4">
+                        <SummaryItem label="Variável Total" value={res.total} highlight />
+                        <SummaryItem label="1. Bônus Fatur. Equipe" value={res.v1} />
+                        <SummaryItem label="2. Bônus Volume Reuniões" value={res.v2} />
+                        <SummaryItem label="3. Bônus Eficiência Equipe" value={res.v3} />
+                        <SummaryItem label="4. Comissão Faturamento" value={res.v4} />
+                        <SummaryItem label="5. Override Qualificação" value={res.v5} />
+
+                        <div className="pt-6 border-t border-white/5">
+                          <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
+                            Bônus Extras (Manual)
+                          </p>
+                          {res.extras.map((ex, i) => (
+                            <div key={i} className="flex gap-2 mb-2">
+                              <input
+                                type="text"
+                                value={ex.label}
+                                onChange={(e) => updateExtraValue(name, i, "label", e.target.value)}
+                                className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white"
+                              />
+                              <input
+                                type="number"
+                                value={ex.val || ""}
+                                onChange={(e) => updateExtraValue(name, i, "val", e.target.value)}
+                                className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right"
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        <button
+                          onClick={() => closeVariable(name, "Produto", res.total)}
+                          className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]"
+                        >
+                          <Lock size={18} /> Fechar Variável
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-8 bg-white/5 p-10 rounded-[3rem] border border-white/5">
+                    <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-[#00D4C5] border-b border-white/5 pb-4">
+                      Base Qualificação Paga: {formatCurrency(res.totalQualifPaga)}
+                    </h3>
+                    <p className="text-sm text-slate-400">
+                      O colaborador recebe um percentual sobre o total pago em bônus de qualificação (score) para todo o
+                      time comercial.
                     </p>
                   </div>
                 </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* LDR - AGORA SEPARADO CORRETAMENTE E COMPLETAMENTE VISÍVEL */}
+        {activeTab === "LDR" && (
+          <div className="space-y-10 animate-in fade-in duration-500">
+            {(() => {
+              const res = calculateLDR();
+              const name = goals.customNames["ldr"];
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                  <div className="lg:col-span-4 space-y-8">
+                    <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden ring-1 ring-white/10 border border-[#00D4C5]/20">
+                      <p className="text-amber-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
+                        Demonstrativo LDR
+                      </p>
+
+                      <div className="flex items-center gap-2 mb-10 group">
+                        <input
+                          type="text"
+                          value={name}
+                          onChange={(e) =>
+                            setGoals({ ...goals, customNames: { ...goals.customNames, ldr: e.target.value } })
+                          }
+                          className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
+                        />
+                        <Edit2 size={16} className="text-white/20 group-hover:text-amber-400" />
+                      </div>
+
+                      <div className="space-y-6">
+                        <SummaryItem label="Variável Total LDR" value={res.total} highlight />
+                        <SummaryItem label="1. Meta Reuniões" value={res.v1} />
+                        <SummaryItem label="2. Bônus Contatos" value={res.v2} />
+                        <SummaryItem label="3. Cards Qualificados" value={res.v3} />
+                        <SummaryItem label="4. Bônus Equipe" value={res.v4} />
+
+                        <div className="pt-6 border-t border-white/5">
+                          <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
+                            Bônus Extras (Manual)
+                          </p>
+                          {res.extras.map((ex, i) => (
+                            <div key={i} className="flex gap-2 mb-2">
+                              <input
+                                type="text"
+                                value={ex.label}
+                                onChange={(e) => updateExtraValue(name, i, "label", e.target.value)}
+                                className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white"
+                              />
+                              <input
+                                type="number"
+                                value={ex.val || ""}
+                                onChange={(e) => updateExtraValue(name, i, "val", e.target.value)}
+                                className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right"
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        <button
+                          onClick={() => closeVariable(name, "LDR", res.total)}
+                          className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]"
+                        >
+                          <Lock size={18} /> Fechar Variável
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-8 space-y-8">
+                    <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-2xl">
+                      <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-10 flex items-center gap-3 text-[#00D4C5] border-b border-white/5 pb-6">
+                        <UserCheck size={20} /> Gestão de Dados LDR
+                      </h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                        <div className="space-y-6">
+                          <div>
+                            <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
+                              Contatos Garimpados
+                            </label>
+                            <div className="flex gap-4">
+                              <input
+                                type="number"
+                                placeholder="Real"
+                                value={goals.ldrStats.garimpados}
+                                onChange={(e) =>
+                                  setGoals({
+                                    ...goals,
+                                    ldrStats: { ...goals.ldrStats, garimpados: parseNum(e.target.value) },
+                                  })
+                                }
+                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Meta"
+                                value={goals.ldrStats.garimpadosMeta}
+                                onChange={(e) =>
+                                  setGoals({
+                                    ...goals,
+                                    ldrStats: { ...goals.ldrStats, garimpadosMeta: parseNum(e.target.value) },
+                                  })
+                                }
+                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
+                            <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
+                            <span className="text-2xl font-black text-cyan-400">
+                              {res.atingimentoGarimpados.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-6">
+                          <div>
+                            <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
+                              Cards Qualificados
+                            </label>
+                            <div className="flex gap-4">
+                              <input
+                                type="number"
+                                placeholder="Real"
+                                value={goals.ldrStats.cards}
+                                onChange={(e) =>
+                                  setGoals({
+                                    ...goals,
+                                    ldrStats: { ...goals.ldrStats, cards: parseNum(e.target.value) },
+                                  })
+                                }
+                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Meta"
+                                value={goals.ldrStats.cardsMeta}
+                                onChange={(e) =>
+                                  setGoals({
+                                    ...goals,
+                                    ldrStats: { ...goals.ldrStats, cardsMeta: parseNum(e.target.value) },
+                                  })
+                                }
+                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
+                            <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
+                            <span className="text-2xl font-black text-indigo-400">
+                              {res.atingimentoCards.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* FECHAMENTO (MODIFICADO: Botão abaixo da tabela) */}
+        {activeTab === "FECHAMENTO" && (
+          <div className="space-y-10 animate-in fade-in">
+            {/* Tabela de Fechamento (Ocupa largura total) */}
+            <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden">
+                <div className="flex justify-between items-center mb-10 border-b border-white/5 pb-8">
+                    <h3 className="text-lg font-black text-white tracking-tight flex items-center gap-4">
+                    <ClipboardList size={24} className="text-[#00C9C8]" /> Resumo do Fechamento: {reportTitle}
+                    </h3>
+                    <div className="text-right">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                        Total Variável Acumulado
+                    </p>
+                    <p className="text-4xl font-black text-[#00C9C8] tracking-tighter shadow-cyan-500/10">
+                        {formatCurrency(goals.closedVariables.reduce((acc, v) => acc + v.value, 0))}
+                    </p>
+                    </div>
+                </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm font-semibold">
+                    <table className="w-full text-left text-sm font-semibold">
                     <thead className="bg-[#0B132B] font-black text-[10px] text-slate-500 uppercase tracking-[0.2em]">
-                      <tr>
+                        <tr>
                         <th className="px-8 py-5">Colaborador</th>
                         <th className="px-8 py-5">Cargo</th>
                         <th className="px-8 py-5 text-right">Meta</th>
@@ -1229,72 +1390,70 @@ const App = () => {
                         <th className="px-8 py-5 text-center">Ating. %</th>
                         <th className="px-8 py-5 text-right">Variável</th>
                         <th className="px-8 py-5 text-center">Ações</th>
-                      </tr>
+                        </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {goals.closedVariables.map((v) => (
+                        {goals.closedVariables.map((v) => (
                         <tr key={v.id} className="hover:bg-white/5 transition-colors">
-                          <td className="px-8 py-5 text-white font-bold">{v.name}</td>
-                          <td className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                            <td className="px-8 py-5 text-white font-bold">{v.name}</td>
+                            <td className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">
                             {v.role}
-                          </td>
-                          <td className="px-8 py-5 text-right text-slate-400">
-                             {v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-"}
-                          </td>
-                          <td className="px-8 py-5 text-right text-white font-bold">
-                             {v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-"}
-                          </td>
-                          <td className="px-8 py-5 text-center text-[#00C9C8] font-black">
-                             {v.achievement ? `${v.achievement.toFixed(1)}%` : "-"}
-                          </td>
-                          <td className="px-8 py-5 text-right font-black text-emerald-400">
+                            </td>
+                            <td className="px-8 py-5 text-right text-slate-400">
+                                {v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-"}
+                            </td>
+                            <td className="px-8 py-5 text-right text-white font-bold">
+                                {v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-"}
+                            </td>
+                            <td className="px-8 py-5 text-center text-[#00C9C8] font-black">
+                                {v.achievement ? `${v.achievement.toFixed(1)}%` : "-"}
+                            </td>
+                            <td className="px-8 py-5 text-right font-black text-emerald-400">
                             {formatCurrency(v.value)}
-                          </td>
-                          <td className="px-8 py-5 text-center">
+                            </td>
+                            <td className="px-8 py-5 text-center">
                             <button
-                              onClick={() => removeClosed(v.id)}
-                              className="p-2.5 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all"
+                                onClick={() => removeClosed(v.id)}
+                                className="p-2.5 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all"
                             >
-                              <Trash2 size={16} />
+                                <Trash2 size={16} />
                             </button>
-                          </td>
+                            </td>
                         </tr>
-                      ))}
+                        ))}
 
-                      {goals.closedVariables.length === 0 && (
+                        {goals.closedVariables.length === 0 && (
                         <tr>
-                          <td
+                            <td
                             colSpan="7"
                             className="py-24 text-center text-slate-500 font-black italic tracking-widest text-[10px]"
-                          >
+                            >
                             Aguardando fechamento de variáveis para consolidar...
-                          </td>
+                            </td>
                         </tr>
-                      )}
+                        )}
                     </tbody>
-                  </table>
+                    </table>
                 </div>
-              </div>
+            </div>
 
-              <div className="space-y-8">
-                <div className="bg-[#0B132B] text-white p-10 rounded-[3rem] shadow-2xl text-center ring-1 ring-white/10">
-                  <Award
-                    className="mx-auto text-[#00C9C8] mb-6 drop-shadow-[0_0_10px_rgba(0,212,197,0.5)]"
-                    size={48}
-                  />
-                  <h4 className="text-[11px] font-black uppercase text-slate-500 mb-3 tracking-[0.2em]">
-                    Status do Mês
-                  </h4>
-                  <p className="text-2xl font-black tracking-tight mb-8">Consolidar Período</p>
+            {/* Seção de Exportação (Centralizada abaixo da tabela) */}
+            <div className="bg-[#0B132B] p-10 rounded-[3rem] shadow-2xl text-center ring-1 ring-white/10 flex flex-col items-center justify-center">
+                <Award
+                className="mx-auto text-[#00C9C8] mb-6 drop-shadow-[0_0_10px_rgba(0,212,197,0.5)]"
+                size={48}
+                />
+                <h4 className="text-[11px] font-black uppercase text-slate-500 mb-3 tracking-[0.2em]">
+                Status do Mês
+                </h4>
+                <p className="text-2xl font-black tracking-tight mb-8">Consolidar Período</p>
 
-                  <button 
-                    onClick={exportReport}
-                    className="w-full bg-[#00C9C8] py-5 rounded-2xl font-black text-[#010B1D] text-sm hover:bg-cyan-400 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3"
-                  >
-                    <Download size={20} /> Exportar Relatório
-                  </button>
-                </div>
-              </div>
+                <button 
+                onClick={exportReport}
+                className="w-64 bg-[#00C9C8] py-5 rounded-2xl font-black text-[#010B1D] text-sm hover:bg-cyan-400 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3"
+                >
+                <Download size={20} /> Exportar Relatório Excel
+                </button>
             </div>
           </div>
         )}
