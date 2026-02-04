@@ -5,11 +5,10 @@ import {
   Calculator, Upload, Search, DollarSign, Activity, Award,
   Sliders, Trash2, Lock, Edit2, Target, TrendingUp, UserCheck,
   ClipboardList, Settings2, Download, Star, Cloud, Loader2, Calendar, Save,
-  History, BarChart3
+  History, BarChart3, Filter
 } from "lucide-react";
 
 // --- CONFIGURAÇÃO SUPABASE ---
-// Certifique-se de ter as variáveis no seu arquivo .env
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -111,14 +110,13 @@ const SimpleLineChart = ({ data, lines }) => {
   if (!data || data.length === 0) return null;
 
   const padding = 40;
-  const width = 800; // viewBox width
+  const width = 800;
   const height = 300;
   const chartWidth = width - padding * 2;
   const chartHeight = height - padding * 2;
 
-  // Encontrar valor máximo para escala Y
   const allValues = data.flatMap(d => lines.map(l => d[l.key]));
-  const maxValue = Math.max(...allValues, 10) * 1.1; // 10% de folga
+  const maxValue = Math.max(...allValues, 10) * 1.1;
   const minValue = 0;
 
   const getX = (index) => padding + (index / (data.length - 1 || 1)) * chartWidth;
@@ -140,7 +138,6 @@ const SimpleLineChart = ({ data, lines }) => {
           return (
             <g key={line.key}>
               <path d={pathD} fill="none" stroke={line.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-              {/* Dots */}
               {data.map((d, i) => (
                 <circle 
                   key={i} 
@@ -192,6 +189,7 @@ const App = () => {
   // --- NOVO ESTADO: HISTÓRICO ---
   const [historyDB, setHistoryDB] = useState({});
   const [selectedHistoryPerson, setSelectedHistoryPerson] = useState("GLOBAL");
+  const [historyFilter, setHistoryFilter] = useState("LAST_6"); 
 
   const [selectedPerson, setSelectedPerson] = useState("");
   const [vendasRaw, setVendasRaw] = useState([]);
@@ -266,7 +264,7 @@ const App = () => {
   // --- LÓGICA DE NUVEM SUPABASE ---
   const getFileName = (type) => `${type}_${selectedMonth}_${selectedYear}`; 
   const getManualDataFileName = () => `DADOS_MANUAIS_${selectedMonth}_${selectedYear}.json`;
-  const HISTORY_FILE_NAME = "HISTORY_DB.json"; // Arquivo permanente de histórico
+  const HISTORY_FILE_NAME = "HISTORY_DB.json";
 
   const saveManualData = async () => {
     setSavingManual(true);
@@ -285,7 +283,7 @@ const App = () => {
     }
   };
 
-  // --- FUNÇÃO DE CONSOLIDAÇÃO DE HISTÓRICO (NOVO) ---
+  // --- FUNÇÃO DE CONSOLIDAÇÃO DE HISTÓRICO ---
   const consolidateMonthToHistory = async () => {
     if (goals.closedVariables.length === 0) {
       alert("Feche ao menos uma variável antes de consolidar o mês.");
@@ -318,7 +316,7 @@ const App = () => {
         }))
       };
 
-      // 3. Atualizar Histórico Local e Preparar para Envio
+      // 3. Atualizar Histórico Local
       currentHistory[monthKey] = monthSummary;
       setHistoryDB(currentHistory);
 
@@ -344,7 +342,7 @@ const App = () => {
       setRules(initialRules);
       setGoals(initialGoals);
 
-      // --- CARREGAR HISTÓRICO GLOBAL (NOVO) ---
+      // Carregar Histórico
       try {
         const { data } = await supabase.storage.from('planilhas').download(HISTORY_FILE_NAME);
         if (data) {
@@ -355,7 +353,7 @@ const App = () => {
           console.log("Histórico novo ou erro ao carregar:", err);
       }
 
-      // --- CARREGAR DADOS DO MÊS ---
+      // Carregar Dados do Mês
       try {
         const vendasName = getFileName("VENDAS");
         const reunioesName = getFileName("REUNIOES");
@@ -611,8 +609,7 @@ const App = () => {
 
   // --- CALC LDR (CORRIGIDO) ---
   const calculateLDR = () => {
-    // PROTEÇÃO CONTRA DADOS ZERADOS
-    const stats = goals.ldrStats || { garimpados: 0, cards: 0, garimpadosMeta: 1, cardsMeta: 1 }; // Evita divisão por zero
+    const stats = goals.ldrStats || { garimpados: 0, cards: 0, garimpadosMeta: 1, cardsMeta: 1 };
     const atingimentoReunioes = goals.meetingsMetaTotal > 0 ? (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100 : 0;
     const atingimentoFaturamento = dataStore.atingimentoTime;
      
@@ -649,14 +646,35 @@ const App = () => {
     return ["GLOBAL", ...Array.from(names).sort()];
   }, [historyDB]);
 
-  // --- PREPARAÇÃO DE DADOS PARA GRÁFICO (NOVO) ---
+  // --- FILTROS DE HISTÓRICO ---
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    sortedMonths.forEach(m => years.add(m.split('-')[0]));
+    return Array.from(years).sort().reverse();
+  }, [sortedMonths]);
+
+  const filteredMonths = useMemo(() => {
+    let result = [...sortedMonths];
+    if (historyFilter === 'LAST_3') {
+      return result.slice(-3);
+    }
+    if (historyFilter === 'LAST_6') {
+      return result.slice(-6);
+    }
+    if (historyFilter === 'ALL') {
+      return result;
+    }
+    return result.filter(m => m.startsWith(historyFilter));
+  }, [sortedMonths, historyFilter]);
+
+  // --- PREPARAÇÃO DE DADOS PARA GRÁFICO ---
   const chartData = useMemo(() => {
-    if (sortedMonths.length === 0) return { data: [], lines: [] };
+    if (filteredMonths.length === 0) return { data: [], lines: [] };
 
     if (selectedHistoryPerson === "GLOBAL") {
         return {
-            data: sortedMonths.map(m => ({
-                label: historyDB[m].title.split(' ')[0].substring(0,3), // Ex: "Jan"
+            data: filteredMonths.map(m => ({
+                label: historyDB[m].title.split(' ')[0].substring(0,3), 
                 meta: historyDB[m].teamStats.revenueGoal,
                 real: historyDB[m].teamStats.revenueReal
             })),
@@ -666,13 +684,10 @@ const App = () => {
             ]
         };
     } else {
-        // Individual
         return {
-            data: sortedMonths.map(m => {
+            data: filteredMonths.map(m => {
                 const monthData = historyDB[m];
                 const person = monthData.individuals.find(p => p.name === selectedHistoryPerson);
-                
-                // Tenta achar o role atual se não encontrar no mês (caso a pessoa não tenha vendido nada naquele mês)
                 const currentRole = person?.role || (monthData.individuals.find(p => p.name === selectedHistoryPerson)?.role);
                 
                 let personAch = 0;
@@ -680,8 +695,6 @@ const App = () => {
 
                 if (currentRole) {
                     if (person) personAch = person.achievement;
-                    
-                    // Cálculo da Média da Equipe (Peers)
                     const peers = monthData.individuals.filter(p => p.role === currentRole);
                     if (peers.length > 0) {
                         const totalAch = peers.reduce((acc, p) => acc + p.achievement, 0);
@@ -697,12 +710,11 @@ const App = () => {
             }),
             lines: [
                 { key: 'person', color: '#00D4C5', name: 'Atingimento Individual (%)' },
-                { key: 'average', color: '#f59e0b', name: 'Média da Equipe (%)' } // Amber para média
+                { key: 'average', color: '#f59e0b', name: 'Média da Equipe (%)' }
             ]
         };
     }
-  }, [sortedMonths, historyDB, selectedHistoryPerson]);
-
+  }, [filteredMonths, historyDB, selectedHistoryPerson]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#021017] to-[#05202B] font-sans text-white pb-12 selection:bg-[#00D4C5]/30 relative">
@@ -928,7 +940,6 @@ const App = () => {
           </div>
         )}
 
-        {/* ... (SDR, CLOSER, GESTOR, PRODUCT, LDR - SEM ALTERAÇÕES DE LÓGICA, CÓDIGO ORIGINAL MANTIDO) ... */}
         {/* SDR */}
         {activeTab === "SDR" && (
           <div className="space-y-10 animate-in fade-in">
@@ -1101,6 +1112,7 @@ const App = () => {
           </div>
         )}
 
+        {/* CLOSER */}
         {activeTab === "CLOSER" && (
           <div className="space-y-10 animate-in fade-in duration-500">
             <div className="max-w-md mx-auto">
@@ -1687,12 +1699,32 @@ const App = () => {
         {/* --- NOVA ABA: HISTÓRICO --- */}
         {activeTab === "HISTÓRICO" && (
           <div className="space-y-10 animate-in fade-in">
-             <div className="bg-[#0B132B] p-8 rounded-[2.5rem] border border-white/5 shadow-xl flex items-center justify-between">
+             <div className="bg-[#0B132B] p-8 rounded-[2.5rem] border border-white/5 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
                 <div>
                   <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3"><History /> Linha do Tempo</h2>
                   <p className="text-sm text-slate-400 font-medium">Evolução Mensal e Histórico de Pagamentos</p>
                 </div>
-                <div>
+                <div className="flex items-center gap-4">
+                   {/* SELETOR DE PERÍODO (NOVO) */}
+                   <div className="flex items-center gap-2 bg-[#021017] p-1 rounded-xl border border-white/10">
+                      <Filter size={16} className="ml-2 text-slate-500" />
+                      <select 
+                          value={historyFilter}
+                          onChange={(e) => setHistoryFilter(e.target.value)}
+                          className="bg-transparent text-white p-2 font-bold outline-none text-sm"
+                       >
+                          <option value="ALL">Todo o Período</option>
+                          <option value="LAST_3">Últimos 3 Meses</option>
+                          <option value="LAST_6">Últimos 6 Meses</option>
+                          <optgroup label="Por Ano">
+                            {availableYears.map(y => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </optgroup>
+                       </select>
+                   </div>
+
+                   {/* SELETOR DE PESSOA */}
                    <select 
                       value={selectedHistoryPerson}
                       onChange={(e) => setSelectedHistoryPerson(e.target.value)}
@@ -1714,31 +1746,31 @@ const App = () => {
              ) : (
                <div className="space-y-8">
                   {selectedHistoryPerson !== "GLOBAL" && (
-                    // VISÃO INDIVIDUAL - STATCARDS PRIMEIRO
+                    // VISÃO INDIVIDUAL - STATCARDS PRIMEIRO (TOPO)
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                        <StatCard 
-                          label="Total Recebido (Acumulado)" 
+                          label="Total Recebido" 
                           icon={<DollarSign size={20} />}
-                          value={formatCurrency(sortedMonths.reduce((acc, m) => {
+                          value={formatCurrency(filteredMonths.reduce((acc, m) => {
                              const person = historyDB[m].individuals.find(p => p.name === selectedHistoryPerson);
                              return acc + (person ? person.variableReceived : 0);
                           }, 0))}
-                          sub="Soma de todos os meses"
+                          sub="No período selecionado"
                        />
                        <StatCard 
-                          label="Média Atingimento Meta" 
+                          label="Média Atingimento" 
                           icon={<Target size={20} />}
-                          value={`${(sortedMonths.reduce((acc, m) => {
+                          value={`${(filteredMonths.reduce((acc, m) => {
                              const person = historyDB[m].individuals.find(p => p.name === selectedHistoryPerson);
                              return acc + (person ? person.achievement : 0);
-                          }, 0) / sortedMonths.filter(m => historyDB[m].individuals.some(p => p.name === selectedHistoryPerson)).length || 0).toFixed(1)}%`}
-                          sub="Performance média histórica"
+                          }, 0) / (filteredMonths.filter(m => historyDB[m].individuals.some(p => p.name === selectedHistoryPerson)).length || 1)).toFixed(1)}%`}
+                          sub="Performance média no período"
                        />
                        <StatCard 
                           label="Meses Ativos" 
                           icon={<Calendar size={20} />}
-                          value={sortedMonths.filter(m => historyDB[m].individuals.some(p => p.name === selectedHistoryPerson)).length}
-                          sub="Participações em fechamentos"
+                          value={filteredMonths.filter(m => historyDB[m].individuals.some(p => p.name === selectedHistoryPerson)).length}
+                          sub="Participações no período"
                        />
                     </div>
                   )}
@@ -1752,7 +1784,7 @@ const App = () => {
                   </div>
 
                   {selectedHistoryPerson === "GLOBAL" ? (
-                    // VISÃO GLOBAL
+                    // VISÃO GLOBAL - TABELA NO FINAL
                     <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 overflow-hidden">
                        <table className="w-full text-left text-sm font-semibold">
                           <thead className="bg-[#0B132B] font-black text-[10px] text-slate-500 uppercase tracking-[0.2em]">
@@ -1765,7 +1797,7 @@ const App = () => {
                              </tr>
                           </thead>
                           <tbody className="divide-y divide-white/5">
-                             {sortedMonths.map(month => {
+                             {filteredMonths.map(month => {
                                 const data = historyDB[month].teamStats;
                                 return (
                                   <tr key={month} className="hover:bg-white/5 transition-colors">
@@ -1785,13 +1817,13 @@ const App = () => {
                        </table>
                     </div>
                   ) : (
-                    // VISÃO INDIVIDUAL - TABELA/BARS ABAIXO DO GRÁFICO
+                    // VISÃO INDIVIDUAL - TABELA/BARS NO FINAL
                     <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 overflow-hidden">
                        <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-8 flex items-center gap-3 text-white border-b border-white/5 pb-4">
                           <BarChart3 size={20} className="text-[#00D4C5]" /> Detalhes Mensais
                        </h3>
                        <div className="space-y-6">
-                          {sortedMonths.map(month => {
+                          {filteredMonths.map(month => {
                              const person = historyDB[month].individuals.find(p => p.name === selectedHistoryPerson);
                              if (!person) return null;
                              
