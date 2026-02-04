@@ -107,7 +107,7 @@ const RuleColumn = ({
 // --- APP PRINCIPAL ---
 const App = () => {
   const [activeTab, setActiveTab] = useState("DASHBOARD");
-  
+   
   // --- ESTADOS DE DATA E NUVEM ---
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -474,7 +474,7 @@ const App = () => {
     const stats = goals.ldrStats || { garimpados: 0, cards: 0, garimpadosMeta: 1, cardsMeta: 1 }; // Evita divisão por zero
     const atingimentoReunioes = goals.meetingsMetaTotal > 0 ? (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100 : 0;
     const atingimentoFaturamento = dataStore.atingimentoTime;
-    
+     
     const atingimentoGarimpados = stats.garimpadosMeta > 0 ? (stats.garimpados / stats.garimpadosMeta) * 100 : 0;
     const atingimentoCards = stats.cardsMeta > 0 ? (stats.cards / stats.cardsMeta) * 100 : 0;
 
@@ -618,7 +618,7 @@ const App = () => {
                 <Sliders size={20} className="text-[#00C9C8]" /> Ajustes Globais
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-10 font-black">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-10 font-black">
                 <div className="space-y-3">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Meta Fat. (R$)</label>
                   <input
@@ -640,7 +640,7 @@ const App = () => {
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Meta Reuniões</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Meta Reuniões (Total)</label>
                   <input
                     type="number"
                     value={goals.meetingsMetaTotal}
@@ -668,6 +668,16 @@ const App = () => {
                     className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-indigo-400 ring-1 ring-white/10"
                   />
                 </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Meta Indiv. SDR</label>
+                  <input
+                    type="number"
+                    value={goals.sdrMetaDefault}
+                    onChange={(e) => setGoals({ ...goals, sdrMetaDefault: parseNum(e.target.value) })}
+                    className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-pink-400 ring-1 ring-white/10"
+                  />
+                </div>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-6 border-t border-white/5 pt-10">
@@ -676,7 +686,7 @@ const App = () => {
                     uploading ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"
                   }`}
                 >
-                   {uploading ? <Loader2 className="animate-spin text-[#00C9C8]" /> : <Cloud size={18} className="text-[#00C9C8]" />}
+                    {uploading ? <Loader2 className="animate-spin text-[#00C9C8]" /> : <Cloud size={18} className="text-[#00C9C8]" />}
                   <span>Importar Vendas (Deals)</span>
                   <input
                     type="file"
@@ -692,7 +702,7 @@ const App = () => {
                     uploading ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"
                   }`}
                 >
-                   {uploading ? <Loader2 className="animate-spin text-[#00C9C8]" /> : <Cloud size={18} className="text-[#00C9C8]" />}
+                    {uploading ? <Loader2 className="animate-spin text-[#00C9C8]" /> : <Cloud size={18} className="text-[#00C9C8]" />}
                   <span>Importar Reuniões (Activities)</span>
                   <input
                     type="file"
