@@ -4,10 +4,12 @@ import { createClient } from '@supabase/supabase-js';
 import {
   Calculator, Upload, Search, DollarSign, Activity, Award,
   Sliders, Trash2, Lock, Edit2, Target, TrendingUp, UserCheck,
-  ClipboardList, Settings2, Download, Star, Cloud, Loader2, Calendar, Save
+  ClipboardList, Settings2, Download, Star, Cloud, Loader2, Calendar, Save,
+  History, BarChart3
 } from "lucide-react";
 
 // --- CONFIGURAÇÃO SUPABASE ---
+// Certifique-se de ter as variáveis no seu arquivo .env
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -104,6 +106,77 @@ const RuleColumn = ({
   </div>
 );
 
+// --- COMPONENTE GRÁFICO DE LINHAS ---
+const SimpleLineChart = ({ data, lines }) => {
+  if (!data || data.length === 0) return null;
+
+  const padding = 40;
+  const width = 800; // viewBox width
+  const height = 300;
+  const chartWidth = width - padding * 2;
+  const chartHeight = height - padding * 2;
+
+  // Encontrar valor máximo para escala Y
+  const allValues = data.flatMap(d => lines.map(l => d[l.key]));
+  const maxValue = Math.max(...allValues, 10) * 1.1; // 10% de folga
+  const minValue = 0;
+
+  const getX = (index) => padding + (index / (data.length - 1 || 1)) * chartWidth;
+  const getY = (value) => height - padding - ((value - minValue) / (maxValue - minValue || 1)) * chartHeight;
+
+  return (
+    <div className="w-full overflow-x-auto bg-[#0B132B] p-6 rounded-[2rem] border border-white/5 shadow-inner">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto min-w-[600px]">
+        {/* Grid Lines */}
+        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#334155" strokeWidth="2" />
+        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#334155" strokeWidth="2" />
+
+        {/* Lines */}
+        {lines.map((line) => {
+          const pathD = data.map((d, i) => 
+            `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d[line.key] || 0)}`
+          ).join(' ');
+
+          return (
+            <g key={line.key}>
+              <path d={pathD} fill="none" stroke={line.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              {/* Dots */}
+              {data.map((d, i) => (
+                <circle 
+                  key={i} 
+                  cx={getX(i)} 
+                  cy={getY(d[line.key] || 0)} 
+                  r="4" 
+                  fill="#0B132B" 
+                  stroke={line.color} 
+                  strokeWidth="2" 
+                />
+              ))}
+            </g>
+          );
+        })}
+
+        {/* Labels X */}
+        {data.map((d, i) => (
+          <text key={i} x={getX(i)} y={height - 10} textAnchor="middle" fill="#94a3b8" fontSize="10" fontWeight="bold">
+            {d.label}
+          </text>
+        ))}
+        
+        {/* Legend */}
+        <g transform={`translate(${padding}, 10)`}>
+           {lines.map((line, i) => (
+             <g key={i} transform={`translate(${i * 180}, 0)`}>
+               <rect width="10" height="10" fill={line.color} rx="2" />
+               <text x="15" y="9" fill="#cbd5e1" fontSize="10" fontWeight="bold">{line.name}</text>
+             </g>
+           ))}
+        </g>
+      </svg>
+    </div>
+  );
+};
+
 // --- APP PRINCIPAL ---
 const App = () => {
   const [activeTab, setActiveTab] = useState("DASHBOARD");
@@ -115,6 +188,10 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
+
+  // --- NOVO ESTADO: HISTÓRICO ---
+  const [historyDB, setHistoryDB] = useState({});
+  const [selectedHistoryPerson, setSelectedHistoryPerson] = useState("GLOBAL");
 
   const [selectedPerson, setSelectedPerson] = useState("");
   const [vendasRaw, setVendasRaw] = useState([]);
@@ -189,6 +266,7 @@ const App = () => {
   // --- LÓGICA DE NUVEM SUPABASE ---
   const getFileName = (type) => `${type}_${selectedMonth}_${selectedYear}`; 
   const getManualDataFileName = () => `DADOS_MANUAIS_${selectedMonth}_${selectedYear}.json`;
+  const HISTORY_FILE_NAME = "HISTORY_DB.json"; // Arquivo permanente de histórico
 
   const saveManualData = async () => {
     setSavingManual(true);
@@ -207,6 +285,57 @@ const App = () => {
     }
   };
 
+  // --- FUNÇÃO DE CONSOLIDAÇÃO DE HISTÓRICO (NOVO) ---
+  const consolidateMonthToHistory = async () => {
+    if (goals.closedVariables.length === 0) {
+      alert("Feche ao menos uma variável antes de consolidar o mês.");
+      return;
+    }
+    
+    setSavingManual(true);
+    try {
+      // 1. Tentar baixar histórico atual
+      let currentHistory = { ...historyDB };
+      
+      // 2. Preparar dados do mês atual
+      const monthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+      
+      const monthSummary = {
+        title: reportTitle,
+        teamStats: {
+          revenueGoal: goals.timeMeta,
+          revenueReal: dataStore.faturamentoTimeReal,
+          achievement: dataStore.atingimentoTime,
+          totalVariablePaid: goals.closedVariables.reduce((acc, v) => acc + v.value, 0)
+        },
+        individuals: goals.closedVariables.map(p => ({
+          name: p.name,
+          role: p.role,
+          target: p.target || 0,
+          realized: p.realized || 0,
+          achievement: p.achievement || 0,
+          variableReceived: p.value
+        }))
+      };
+
+      // 3. Atualizar Histórico Local e Preparar para Envio
+      currentHistory[monthKey] = monthSummary;
+      setHistoryDB(currentHistory);
+
+      // 4. Salvar na Nuvem
+      const blob = new Blob([JSON.stringify(currentHistory)], { type: "application/json" });
+      await supabase.storage.from('planilhas').upload(HISTORY_FILE_NAME, blob, { upsert: true });
+      
+      alert(`Histórico consolidado com sucesso para ${reportTitle}!`);
+    } catch (err) {
+      console.error("Erro ao consolidar histórico:", err);
+      alert("Erro ao salvar histórico no Supabase.");
+    } finally {
+      setSavingManual(false);
+    }
+  };
+
+  // --- CARREGAMENTO INICIAL DOS DADOS ---
   useEffect(() => {
     const fetchSavedData = async () => {
       setLoading(true);
@@ -215,6 +344,18 @@ const App = () => {
       setRules(initialRules);
       setGoals(initialGoals);
 
+      // --- CARREGAR HISTÓRICO GLOBAL (NOVO) ---
+      try {
+        const { data } = await supabase.storage.from('planilhas').download(HISTORY_FILE_NAME);
+        if (data) {
+            const textData = await data.text();
+            setHistoryDB(JSON.parse(textData));
+        }
+      } catch (err) {
+          console.log("Histórico novo ou erro ao carregar:", err);
+      }
+
+      // --- CARREGAR DADOS DO MÊS ---
       try {
         const vendasName = getFileName("VENDAS");
         const reunioesName = getFileName("REUNIOES");
@@ -498,6 +639,71 @@ const App = () => {
     };
   };
 
+  // --- PREPARAÇÃO DE DADOS PARA HISTÓRICO ---
+  const sortedMonths = Object.keys(historyDB).sort();
+  const allPeopleInHistory = useMemo(() => {
+    const names = new Set();
+    Object.values(historyDB).forEach(month => {
+      month.individuals?.forEach(ind => names.add(ind.name));
+    });
+    return ["GLOBAL", ...Array.from(names).sort()];
+  }, [historyDB]);
+
+  // --- PREPARAÇÃO DE DADOS PARA GRÁFICO (NOVO) ---
+  const chartData = useMemo(() => {
+    if (sortedMonths.length === 0) return { data: [], lines: [] };
+
+    if (selectedHistoryPerson === "GLOBAL") {
+        return {
+            data: sortedMonths.map(m => ({
+                label: historyDB[m].title.split(' ')[0].substring(0,3), // Ex: "Jan"
+                meta: historyDB[m].teamStats.revenueGoal,
+                real: historyDB[m].teamStats.revenueReal
+            })),
+            lines: [
+                { key: 'meta', color: '#94a3b8', name: 'Meta' },
+                { key: 'real', color: '#00D4C5', name: 'Realizado' }
+            ]
+        };
+    } else {
+        // Individual
+        return {
+            data: sortedMonths.map(m => {
+                const monthData = historyDB[m];
+                const person = monthData.individuals.find(p => p.name === selectedHistoryPerson);
+                
+                // Tenta achar o role atual se não encontrar no mês (caso a pessoa não tenha vendido nada naquele mês)
+                const currentRole = person?.role || (monthData.individuals.find(p => p.name === selectedHistoryPerson)?.role);
+                
+                let personAch = 0;
+                let teamAvgAch = 0;
+
+                if (currentRole) {
+                    if (person) personAch = person.achievement;
+                    
+                    // Cálculo da Média da Equipe (Peers)
+                    const peers = monthData.individuals.filter(p => p.role === currentRole);
+                    if (peers.length > 0) {
+                        const totalAch = peers.reduce((acc, p) => acc + p.achievement, 0);
+                        teamAvgAch = totalAch / peers.length;
+                    }
+                }
+
+                return {
+                    label: monthData.title.split(' ')[0].substring(0,3),
+                    person: personAch,
+                    average: teamAvgAch
+                };
+            }),
+            lines: [
+                { key: 'person', color: '#00D4C5', name: 'Atingimento Individual (%)' },
+                { key: 'average', color: '#f59e0b', name: 'Média da Equipe (%)' } // Amber para média
+            ]
+        };
+    }
+  }, [sortedMonths, historyDB, selectedHistoryPerson]);
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#021017] to-[#05202B] font-sans text-white pb-12 selection:bg-[#00D4C5]/30 relative">
       
@@ -533,12 +739,12 @@ const App = () => {
           </div>
 
           <div className="flex items-center gap-1 bg-white/5 p-1.5 rounded-2xl overflow-x-auto max-w-full">
-            {["DASHBOARD", "SDR", "CLOSER", "GESTOR", "PRODUCT", "LDR", "FECHAMENTO", "REGRAS"].map((tab) => (
+            {["DASHBOARD", "SDR", "CLOSER", "GESTOR", "PRODUCT", "LDR", "FECHAMENTO", "HISTÓRICO", "REGRAS"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => {
                   setActiveTab(tab);
-                  setSelectedPerson("");
+                  if(tab !== "HISTÓRICO") setSelectedPerson("");
                 }}
                 className={`px-5 py-2.5 rounded-xl text-[11px] font-black tracking-wider transition-all uppercase ${
                   activeTab === tab ? "bg-[#00D4C5] text-[#021017]" : "text-slate-400 hover:text-white hover:bg-white/10"
@@ -553,30 +759,32 @@ const App = () => {
 
       <main className="max-w-7xl mx-auto p-8">
         
-        {/* SELETOR DE MÊS E ANO (GLOBAL) */}
-        <div className="flex justify-end items-center gap-4 mb-8">
-           <div className="flex items-center gap-2 bg-[#0B132B] px-4 py-2 rounded-xl border border-white/10">
-              <Calendar size={16} className="text-[#00D4C5]" />
-              <select 
-                value={selectedMonth} 
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
-              >
-                {Array.from({length: 12}, (_, i) => i + 1).map(m => (
-                  <option key={m} value={m} className="bg-[#0B132B]">{new Date(0, m-1).toLocaleString('pt-BR', {month: 'long'})}</option>
-                ))}
-              </select>
-              <select 
-                value={selectedYear} 
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
-              >
-                {[2024, 2025, 2026, 2027].map(y => (
-                  <option key={y} value={y} className="bg-[#0B132B]">{y}</option>
-                ))}
-              </select>
-           </div>
-        </div>
+        {/* SELETOR DE MÊS E ANO (GLOBAL - SÓ APARECE SE NÃO FOR HISTÓRICO) */}
+        {activeTab !== "HISTÓRICO" && (
+          <div className="flex justify-end items-center gap-4 mb-8">
+             <div className="flex items-center gap-2 bg-[#0B132B] px-4 py-2 rounded-xl border border-white/10">
+                <Calendar size={16} className="text-[#00D4C5]" />
+                <select 
+                  value={selectedMonth} 
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
+                >
+                  {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                    <option key={m} value={m} className="bg-[#0B132B]">{new Date(0, m-1).toLocaleString('pt-BR', {month: 'long'})}</option>
+                  ))}
+                </select>
+                <select 
+                  value={selectedYear} 
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
+                >
+                  {[2024, 2025, 2026, 2027].map(y => (
+                    <option key={y} value={y} className="bg-[#0B132B]">{y}</option>
+                  ))}
+                </select>
+             </div>
+          </div>
+        )}
 
         {/* DASHBOARD */}
         {activeTab === "DASHBOARD" && (
@@ -720,6 +928,7 @@ const App = () => {
           </div>
         )}
 
+        {/* ... (SDR, CLOSER, GESTOR, PRODUCT, LDR - SEM ALTERAÇÕES DE LÓGICA, CÓDIGO ORIGINAL MANTIDO) ... */}
         {/* SDR */}
         {activeTab === "SDR" && (
           <div className="space-y-10 animate-in fade-in">
@@ -892,7 +1101,6 @@ const App = () => {
           </div>
         )}
 
-        {/* CLOSER */}
         {activeTab === "CLOSER" && (
           <div className="space-y-10 animate-in fade-in duration-500">
             <div className="max-w-md mx-auto">
@@ -1046,7 +1254,6 @@ const App = () => {
           </div>
         )}
 
-        {/* GESTOR */}
         {activeTab === "GESTOR" && (
           <div className="space-y-10 animate-in fade-in duration-500">
             {(() => {
@@ -1127,7 +1334,7 @@ const App = () => {
           </div>
         )}
 
-        {/* PRODUTO */}
+        {/* PRODUCT */}
         {activeTab === "PRODUCT" && (
           <div className="space-y-10 animate-in fade-in duration-500">
             {(() => {
@@ -1458,13 +1665,170 @@ const App = () => {
                 </h4>
                 <p className="text-2xl font-black tracking-tight mb-8">Consolidar Período</p>
 
-                <button 
-                onClick={exportReport}
-                className="w-64 bg-[#00C9C8] py-5 rounded-2xl font-black text-[#010B1D] text-sm hover:bg-cyan-400 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3"
-                >
-                <Download size={20} /> Exportar Relatório Excel
-                </button>
+                <div className="flex gap-4">
+                  <button 
+                  onClick={consolidateMonthToHistory}
+                  className="w-64 bg-white/10 py-5 rounded-2xl font-black text-white text-sm hover:bg-white/20 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3 border border-white/5"
+                  >
+                  <History size={20} /> Salvar no Histórico
+                  </button>
+
+                  <button 
+                  onClick={exportReport}
+                  className="w-64 bg-[#00C9C8] py-5 rounded-2xl font-black text-[#010B1D] text-sm hover:bg-cyan-400 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3"
+                  >
+                  <Download size={20} /> Exportar Excel
+                  </button>
+                </div>
             </div>
+          </div>
+        )}
+
+        {/* --- NOVA ABA: HISTÓRICO --- */}
+        {activeTab === "HISTÓRICO" && (
+          <div className="space-y-10 animate-in fade-in">
+             <div className="bg-[#0B132B] p-8 rounded-[2.5rem] border border-white/5 shadow-xl flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3"><History /> Linha do Tempo</h2>
+                  <p className="text-sm text-slate-400 font-medium">Evolução Mensal e Histórico de Pagamentos</p>
+                </div>
+                <div>
+                   <select 
+                      value={selectedHistoryPerson}
+                      onChange={(e) => setSelectedHistoryPerson(e.target.value)}
+                      className="bg-[#021017] text-white p-3 rounded-xl border border-white/10 font-bold outline-none"
+                   >
+                      <option value="GLOBAL">Visão Global da Empresa</option>
+                      {allPeopleInHistory.filter(n => n !== "GLOBAL").map(name => (
+                         <option key={name} value={name}>{name}</option>
+                      ))}
+                   </select>
+                </div>
+             </div>
+
+             {sortedMonths.length === 0 ? (
+               <div className="text-center py-20 bg-white/5 rounded-[3rem] border border-dashed border-white/10">
+                  <History size={48} className="mx-auto text-slate-600 mb-4" />
+                  <p className="text-slate-500 font-bold">Nenhum histórico consolidado ainda. Vá em "Fechamento" e consolide um mês.</p>
+               </div>
+             ) : (
+               <div className="space-y-8">
+                  {selectedHistoryPerson !== "GLOBAL" && (
+                    // VISÃO INDIVIDUAL - STATCARDS PRIMEIRO
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                       <StatCard 
+                          label="Total Recebido (Acumulado)" 
+                          icon={<DollarSign size={20} />}
+                          value={formatCurrency(sortedMonths.reduce((acc, m) => {
+                             const person = historyDB[m].individuals.find(p => p.name === selectedHistoryPerson);
+                             return acc + (person ? person.variableReceived : 0);
+                          }, 0))}
+                          sub="Soma de todos os meses"
+                       />
+                       <StatCard 
+                          label="Média Atingimento Meta" 
+                          icon={<Target size={20} />}
+                          value={`${(sortedMonths.reduce((acc, m) => {
+                             const person = historyDB[m].individuals.find(p => p.name === selectedHistoryPerson);
+                             return acc + (person ? person.achievement : 0);
+                          }, 0) / sortedMonths.filter(m => historyDB[m].individuals.some(p => p.name === selectedHistoryPerson)).length || 0).toFixed(1)}%`}
+                          sub="Performance média histórica"
+                       />
+                       <StatCard 
+                          label="Meses Ativos" 
+                          icon={<Calendar size={20} />}
+                          value={sortedMonths.filter(m => historyDB[m].individuals.some(p => p.name === selectedHistoryPerson)).length}
+                          sub="Participações em fechamentos"
+                       />
+                    </div>
+                  )}
+
+                  {/* GRÁFICO DE EVOLUÇÃO - AGORA ABAIXO DOS STATCARDS */}
+                  <div className="bg-[#0B132B] p-10 rounded-[3rem] border border-white/5 shadow-xl">
+                     <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-8 flex items-center gap-3 text-white border-b border-white/5 pb-4">
+                        <BarChart3 size={20} className="text-[#00D4C5]" /> Gráfico de Desempenho
+                     </h3>
+                     <SimpleLineChart data={chartData.data} lines={chartData.lines} />
+                  </div>
+
+                  {selectedHistoryPerson === "GLOBAL" ? (
+                    // VISÃO GLOBAL
+                    <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 overflow-hidden">
+                       <table className="w-full text-left text-sm font-semibold">
+                          <thead className="bg-[#0B132B] font-black text-[10px] text-slate-500 uppercase tracking-[0.2em]">
+                             <tr>
+                                <th className="px-8 py-5">Mês Referência</th>
+                                <th className="px-8 py-5 text-right">Meta Equipe</th>
+                                <th className="px-8 py-5 text-right">Realizado</th>
+                                <th className="px-8 py-5 text-center">Atingimento</th>
+                                <th className="px-8 py-5 text-right">Total Variável Pago</th>
+                             </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5">
+                             {sortedMonths.map(month => {
+                                const data = historyDB[month].teamStats;
+                                return (
+                                  <tr key={month} className="hover:bg-white/5 transition-colors">
+                                     <td className="px-8 py-5 text-white font-bold">{historyDB[month].title}</td>
+                                     <td className="px-8 py-5 text-right text-slate-400">{formatCurrency(data.revenueGoal)}</td>
+                                     <td className="px-8 py-5 text-right text-white">{formatCurrency(data.revenueReal)}</td>
+                                     <td className="px-8 py-5 text-center">
+                                        <span className={`px-3 py-1 rounded-full text-xs font-black ${data.achievement >= 100 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                                           {data.achievement.toFixed(1)}%
+                                        </span>
+                                     </td>
+                                     <td className="px-8 py-5 text-right text-[#00C9C8] font-black">{formatCurrency(data.totalVariablePaid)}</td>
+                                  </tr>
+                                )
+                             })}
+                          </tbody>
+                       </table>
+                    </div>
+                  ) : (
+                    // VISÃO INDIVIDUAL - TABELA/BARS ABAIXO DO GRÁFICO
+                    <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 overflow-hidden">
+                       <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-8 flex items-center gap-3 text-white border-b border-white/5 pb-4">
+                          <BarChart3 size={20} className="text-[#00D4C5]" /> Detalhes Mensais
+                       </h3>
+                       <div className="space-y-6">
+                          {sortedMonths.map(month => {
+                             const person = historyDB[month].individuals.find(p => p.name === selectedHistoryPerson);
+                             if (!person) return null;
+                             
+                             return (
+                                <div key={month} className="bg-[#0B132B] p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row items-center gap-6">
+                                   <div className="w-32 shrink-0">
+                                      <p className="text-[10px] font-black uppercase text-slate-500">{historyDB[month].title}</p>
+                                      <p className="text-sm font-bold text-white">{person.role}</p>
+                                   </div>
+                                   
+                                   <div className="flex-1 w-full space-y-2">
+                                      <div className="flex justify-between text-xs font-bold mb-1">
+                                         <span className="text-slate-400">Meta: {person.role === 'Closer' ? formatCurrency(person.target) : person.target}</span>
+                                         <span className={`${person.achievement >= 100 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                            {person.realized} ({person.achievement.toFixed(1)}%)
+                                         </span>
+                                      </div>
+                                      <div className="h-3 bg-white/5 rounded-full overflow-hidden w-full">
+                                         <div 
+                                            className={`h-full rounded-full ${person.achievement >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                                            style={{ width: `${Math.min(person.achievement, 100)}%` }}
+                                         ></div>
+                                      </div>
+                                   </div>
+
+                                   <div className="w-32 shrink-0 text-right">
+                                      <p className="text-[10px] font-black uppercase text-slate-500">Variável</p>
+                                      <p className="text-xl font-black text-[#00C9C8]">{formatCurrency(person.variableReceived)}</p>
+                                   </div>
+                                </div>
+                             )
+                          })}
+                       </div>
+                    </div>
+                  )}
+               </div>
+             )}
           </div>
         )}
 
