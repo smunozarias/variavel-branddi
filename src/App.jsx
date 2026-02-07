@@ -1,259 +1,99 @@
 import React, { useState, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { createClient } from '@supabase/supabase-js';
 import {
-  Calculator, Upload, Search, DollarSign, Activity, Award,
+  Upload, Search, DollarSign, Activity, Award,
   Sliders, Trash2, Lock, Edit2, Target, TrendingUp, UserCheck,
   ClipboardList, Settings2, Download, Star, Cloud, Loader2, Calendar, Save,
   History, BarChart3, Filter
 } from "lucide-react";
+import toast, { Toaster } from 'react-hot-toast';
 
-// --- CONFIGURAÇÃO SUPABASE ---
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import StatCard from "./components/StatCard";
+import SummaryItem from "./components/SummaryItem";
+import RuleColumn from "./components/RuleColumn";
+import SimpleLineChart from "./components/SimpleLineChart";
+import NavBar from "./components/NavBar";
+import { formatCurrency } from "./utils/formatCurrency";
+import { initialRules, initialGoals } from "./utils/constants";
+import { useSupabase } from "./hooks/useSupabase";
 
-// --- FUNÇÕES UTILITÁRIAS GLOBAIS ---
-const formatCurrency = (val) => {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(val || 0);
+// --- HELPERS ---
+const parseNum = (val, isScore = false) => {
+  if (val === undefined || val === null || val === "") return 0;
+  if (typeof val === "number") return val;
+  let s = val.toString().trim().replace("R$", "").trim();
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  if (lastComma > lastDot) s = s.replace(/\./g, "").replace(",", ".");
+  else if (lastDot > lastComma) s = s.replace(/,/g, "");
+  return parseFloat(s) || 0;
 };
 
-// --- COMPONENTES AUXILIARES ---
-const StatCard = ({ label, value, sub, icon }) => (
-  <div className="bg-[#0A2230]/60 backdrop-blur-md p-7 rounded-[2rem] border border-[#00D4C5]/20 shadow-xl hover:border-[#00D4C5] transition-all group relative overflow-hidden">
-    <div className="absolute top-0 right-0 w-24 h-24 bg-[#00D4C5]/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
-    <div className="flex justify-between items-start mb-6 relative z-10">
-      <div className="p-4 rounded-2xl text-[#021017] shadow-lg shadow-[#00D4C5]/20 group-hover:scale-110 transition-transform bg-[#00D4C5]">
-        {icon}
-      </div>
-      <div className="text-right">
-        <p className="text-[10px] font-bold text-cyan-100/60 uppercase tracking-[0.2em] mb-2">
-          {label}
-        </p>
-        <p className="text-3xl font-black text-white leading-none tracking-tight">
-          {value}
-        </p>
-      </div>
-    </div>
-    <div className="flex items-center gap-2 text-[11px] font-semibold text-cyan-100/50 border-t border-white/5 pt-4">
-      <div className="w-1.5 h-1.5 rounded-full bg-[#00D4C5] animate-pulse"></div>
-      {sub}
-    </div>
-  </div>
-);
+const extractValue = (row, key) => {
+  const keys = Object.keys(row);
+  const map = {
+    sdr: ["Negócio - SDR", "sdr", "sdr responsável", "Atividade - Proprietário", "Proprietário da atividade"],
+    proprietario: ["Negócio - Proprietário", "Proprietário", "closer", "proprietario"],
+    valor: ["Negócio - Valor do negócio", "Valor", "Amount"],
+    soma: ["Soma TOTAL", "soma total", "score"],
+    nome: ["Organização - Nome", "Negócio - Nome do negócio", "Nome", "cliente", "titulo"],
+  };
+  const targets = map[key.toLowerCase()] || [key.toLowerCase()];
+  for (let sk of targets) {
+    const found = keys.find((k) => k.toLowerCase().trim() === sk.toLowerCase().trim());
+    if (found) return row[found];
+  }
+  return undefined;
+};
 
-const SummaryItem = ({ label, value, highlight }) => (
-  <div
-    className={`flex justify-between items-center py-3 ${
-      highlight ? "border-b border-[#00D4C5]/30 mb-4 pb-4" : "border-b border-white/5"
-    }`}
-  >
-    <span
-      className={`text-sm ${
-        highlight
-          ? "font-black text-[#00D4C5] uppercase tracking-widest"
-          : "opacity-70 font-medium text-cyan-50"
-      }`}
-    >
-      {label}
-    </span>
-    <span
-      className={`font-black ${
-        highlight ? "text-3xl text-[#00D4C5]" : "text-sm text-white"
-      }`}
-    >
-      {formatCurrency(value)}
-    </span>
-  </div>
-);
+const normalizeName = (name) =>
+  name ? name.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
 
-const RuleColumn = ({
-  title,
-  items,
-  onChange,
-  labelKey,
-  labelSuffix = "",
-  labelPrefix = "",
-}) => (
-  <div className="space-y-4">
-    <p className="text-xs font-black uppercase text-[#00D4C5] tracking-widest">{title}</p>
-    <div className="space-y-2">
-      {[...items]
-        .sort((a, b) => b[labelKey] - a[labelKey])
-        .map((item, idx) => (
-          <div
-            key={idx}
-            className="flex items-center gap-3 bg-[#0A2230] p-2 rounded-xl border border-white/5"
-          >
-            <span className="text-xs font-bold text-slate-400 w-16 text-right">
-              {labelPrefix}
-              {item[labelKey]}
-              {labelSuffix}
-            </span>
-            <input
-              type="number"
-              value={item.val}
-              onChange={(e) => onChange(idx, "val", e.target.value)}
-              className="flex-1 bg-transparent text-right px-2 font-black text-[#00D4C5] outline-none"
-            />
-          </div>
-        ))}
-    </div>
-  </div>
-);
+const isSamePerson = (nameA, nameB) => {
+  const nA = normalizeName(nameA);
+  const nB = normalizeName(nameB);
+  return nA && nB && (nA.includes(nB) || nB.includes(nA));
+};
 
-// --- COMPONENTE GRÁFICO DE LINHAS ---
-const SimpleLineChart = ({ data, lines }) => {
-  if (!data || data.length === 0) return null;
-
-  const padding = 40;
-  const width = 800;
-  const height = 300;
-  const chartWidth = width - padding * 2;
-  const chartHeight = height - padding * 2;
-
-  const allValues = data.flatMap(d => lines.map(l => d[l.key]));
-  const maxValue = Math.max(...allValues, 10) * 1.1;
-  const minValue = 0;
-
-  const getX = (index) => padding + (index / (data.length - 1 || 1)) * chartWidth;
-  const getY = (value) => height - padding - ((value - minValue) / (maxValue - minValue || 1)) * chartHeight;
-
-  return (
-    <div className="w-full overflow-x-auto bg-[#0B132B] p-6 rounded-[2rem] border border-white/5 shadow-inner">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto min-w-[600px]">
-        {/* Grid Lines */}
-        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#334155" strokeWidth="2" />
-        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#334155" strokeWidth="2" />
-
-        {/* Lines */}
-        {lines.map((line) => {
-          const pathD = data.map((d, i) => 
-            `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d[line.key] || 0)}`
-          ).join(' ');
-
-          return (
-            <g key={line.key}>
-              <path d={pathD} fill="none" stroke={line.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-              {data.map((d, i) => (
-                <circle 
-                  key={i} 
-                  cx={getX(i)} 
-                  cy={getY(d[line.key] || 0)} 
-                  r="4" 
-                  fill="#0B132B" 
-                  stroke={line.color} 
-                  strokeWidth="2" 
-                />
-              ))}
-            </g>
-          );
-        })}
-
-        {/* Labels X */}
-        {data.map((d, i) => (
-          <text key={i} x={getX(i)} y={height - 10} textAnchor="middle" fill="#94a3b8" fontSize="10" fontWeight="bold">
-            {d.label}
-          </text>
-        ))}
-        
-        {/* Legend */}
-        <g transform={`translate(${padding}, 10)`}>
-           {lines.map((line, i) => (
-             <g key={i} transform={`translate(${i * 180}, 0)`}>
-               <rect width="10" height="10" fill={line.color} rx="2" />
-               <text x="15" y="9" fill="#cbd5e1" fontSize="10" fontWeight="bold">{line.name}</text>
-             </g>
-           ))}
-        </g>
-      </svg>
-    </div>
-  );
+const getTierValue = (list, val, field = "min") => {
+  const sorted = [...list].sort((a, b) => b[field] - a[field]);
+  return sorted.find((item) => val >= item[field]);
 };
 
 // --- APP PRINCIPAL ---
 const App = () => {
   const [activeTab, setActiveTab] = useState("DASHBOARD");
-   
+
   // --- ESTADOS DE DATA E NUVEM ---
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [reportTitle, setReportTitle] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [savingManual, setSavingManual] = useState(false);
 
   // --- NOVO ESTADO: HISTÓRICO ---
-  const [historyDB, setHistoryDB] = useState({});
   const [selectedHistoryPerson, setSelectedHistoryPerson] = useState("GLOBAL");
-  const [historyFilter, setHistoryFilter] = useState("LAST_6"); 
+  const [historyFilter, setHistoryFilter] = useState("LAST_6");
+  const [historySort, setHistorySort] = useState("ACH_DESC"); // Default to Achievement Descending
+  const [fechamentoSort, setFechamentoSort] = useState("DATE_DESC"); // New state for Fechamento sorting
 
   const [selectedPerson, setSelectedPerson] = useState("");
   const [vendasRaw, setVendasRaw] = useState([]);
   const [reunioesRaw, setReunioesRaw] = useState([]);
 
-  // --- REGRAS (Estado Inicial) ---
-  const initialRules = {
-    bonusUniversal: [{ min: 120, val: 750 }, { min: 100, val: 500 }, { min: 80, val: 350 }],
-    sdr: {
-      t1MetaReunioes: [{ perc: 200, val: 1200 }, { perc: 150, val: 750 }, { perc: 100, val: 600 }, { perc: 80, val: 350 }],
-      t3Qualificacao: [{ min: 16, val: 200 }, { min: 14, val: 100 }, { min: 12, val: 50 }, { min: 0, val: 25 }],
-      t4VendasIniciadas: [{ min: 10900, val: 300 }, { min: 7900, val: 200 }, { min: 0, val: 100 }],
-    },
-    closer: {
-      matriz: {
-        supermeta: { threshold: 120, levels: { 120: 0.12, 100: 0.09, 80: 0.07, 0: 0.05 } },
-        meta: { threshold: 100, levels: { 120: 0.10, 100: 0.08, 80: 0.06, 0: 0.04 } },
-        abaixo: { threshold: 0, levels: { 120: 0.09, 100: 0.07, 80: 0.05, 0: 0.03 } },
-      },
-    },
-    gestor: {
-      bonusFaturamento: [{ min: 120, val: 1125 }, { min: 100, val: 875 }, { min: 80, val: 625 }],
-      bonusVolumeReunioes: [{ min: 120, val: 1125 }, { min: 100, val: 875 }, { min: 80, val: 625 }],
-      bonusMetaEquipe: [{ min: 100, val: 2250 }, { min: 80, val: 1750 }],
-      comissaoFatPerc: 0.01,
-      overrideQualificacaoPerc: 0.2,
-    },
-    produto: {
-      bonusFaturamento: [{ min: 120, val: 600 }, { min: 100, val: 450 }, { min: 80, val: 350 }],
-      bonusVolumeReunioes: [{ min: 120, val: 600 }, { min: 100, val: 450 }, { min: 80, val: 350 }],
-      bonusMetaEquipe: [{ min: 100, val: 1125 }, { min: 80, val: 900 }],
-      comissaoFatPerc: 0.006,
-      overrideQualificacaoPerc: 0.1,
-    },
-    ldr: {
-      bonusReunioes: [{ min: 120, val: 250 }, { min: 100, val: 200 }, { min: 80, val: 150 }],
-      bonusGarimpados: [{ min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 }],
-      bonusCards: [{ min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 }],
-    },
-  };
-
+  // --- REGRAS & METAS ---
   const [rules, setRules] = useState(initialRules);
-
-  const initialGoals = {
-    timeMeta: 130000,
-    timeRealManual: "",
-    sdrMetaDefault: 14,
-    individualSdrGoals: {},
-    closerMetaBase: 35000,
-    individualCloserGoals: {},
-    meetingsMetaTotal: 100,
-    dealsMetaTotal: 20,
-    teamEfficiencyManual: 0,
-    individualExtras: {},
-    closedVariables: [],
-    customNames: {
-      gestor: "Sergio Muñoz",
-      produto: "Ariel Regina",
-      ldr: "Colaborador LDR",
-    },
-    ldrStats: { garimpados: 0, cards: 0, garimpadosMeta: 100, cardsMeta: 20 },
-  };
-
   const [goals, setGoals] = useState(initialGoals);
+
+  // --- HOOKS ---
+  const {
+    loading,
+    uploading,
+    savingManual,
+    historyDB,
+    saveData,
+    consolidateHistory,
+    fetchData,
+    handleUpload
+  } = useSupabase(selectedMonth, selectedYear, reportTitle);
 
   // Atualiza título do relatório
   useEffect(() => {
@@ -261,214 +101,10 @@ const App = () => {
     setReportTitle(date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' }));
   }, [selectedMonth, selectedYear]);
 
-  // --- LÓGICA DE NUVEM SUPABASE ---
-  const getFileName = (type) => `${type}_${selectedMonth}_${selectedYear}`; 
-  const getManualDataFileName = () => `DADOS_MANUAIS_${selectedMonth}_${selectedYear}.json`;
-  const HISTORY_FILE_NAME = "HISTORY_DB.json";
-
-  const saveManualData = async () => {
-    setSavingManual(true);
-    try {
-      const dataToSave = { rules: rules, goals: goals };
-      const blob = new Blob([JSON.stringify(dataToSave)], { type: "application/json" });
-      const fileName = getManualDataFileName();
-      const { error } = await supabase.storage.from('planilhas').upload(fileName, blob, { upsert: true });
-      if (error) throw error;
-      alert("Dados manuais (metas, bônus, regras) salvos com sucesso!");
-    } catch (err) {
-      console.error("Erro ao salvar dados manuais:", err);
-      alert("Erro ao salvar dados manuais.");
-    } finally {
-      setSavingManual(false);
-    }
-  };
-
-  // --- FUNÇÃO DE CONSOLIDAÇÃO DE HISTÓRICO ---
-  const consolidateMonthToHistory = async () => {
-    if (goals.closedVariables.length === 0) {
-      alert("Feche ao menos uma variável antes de consolidar o mês.");
-      return;
-    }
-    
-    setSavingManual(true);
-    try {
-      // 1. Tentar baixar histórico atual
-      let currentHistory = { ...historyDB };
-      
-      // 2. Preparar dados do mês atual
-      const monthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
-      
-      const monthSummary = {
-        title: reportTitle,
-        teamStats: {
-          revenueGoal: goals.timeMeta,
-          revenueReal: dataStore.faturamentoTimeReal,
-          achievement: dataStore.atingimentoTime,
-          totalVariablePaid: goals.closedVariables.reduce((acc, v) => acc + v.value, 0)
-        },
-        individuals: goals.closedVariables.map(p => ({
-          name: p.name,
-          role: p.role,
-          target: p.target || 0,
-          realized: p.realized || 0,
-          achievement: p.achievement || 0,
-          variableReceived: p.value
-        }))
-      };
-
-      // 3. Atualizar Histórico Local
-      currentHistory[monthKey] = monthSummary;
-      setHistoryDB(currentHistory);
-
-      // 4. Salvar na Nuvem
-      const blob = new Blob([JSON.stringify(currentHistory)], { type: "application/json" });
-      await supabase.storage.from('planilhas').upload(HISTORY_FILE_NAME, blob, { upsert: true });
-      
-      alert(`Histórico consolidado com sucesso para ${reportTitle}!`);
-    } catch (err) {
-      console.error("Erro ao consolidar histórico:", err);
-      alert("Erro ao salvar histórico no Supabase.");
-    } finally {
-      setSavingManual(false);
-    }
-  };
-
-  // --- CARREGAMENTO INICIAL DOS DADOS ---
+  // Carregar dados ao iniciar ou mudar data
   useEffect(() => {
-    const fetchSavedData = async () => {
-      setLoading(true);
-      setVendasRaw([]);
-      setReunioesRaw([]);
-      setRules(initialRules);
-      setGoals(initialGoals);
-
-      // Carregar Histórico
-      try {
-        const { data } = await supabase.storage.from('planilhas').download(HISTORY_FILE_NAME);
-        if (data) {
-            const textData = await data.text();
-            setHistoryDB(JSON.parse(textData));
-        }
-      } catch (err) {
-          console.log("Histórico novo ou erro ao carregar:", err);
-      }
-
-      // Carregar Dados do Mês
-      try {
-        const vendasName = getFileName("VENDAS");
-        const reunioesName = getFileName("REUNIOES");
-        const manualName = getManualDataFileName();
-
-        const { data: vendasData } = await supabase.storage.from('planilhas').download(vendasName);
-        if (vendasData) await processFile(vendasData, "VENDAS");
-
-        const { data: reunioesData } = await supabase.storage.from('planilhas').download(reunioesName);
-        if (reunioesData) await processFile(reunioesData, "REUNIOES");
-
-        const { data: manualData } = await supabase.storage.from('planilhas').download(manualName);
-        if (manualData) {
-            const textData = await manualData.text();
-            const jsonData = JSON.parse(textData);
-            if (jsonData.rules) setRules(jsonData.rules);
-            if (jsonData.goals) setGoals(jsonData.goals);
-        }
-      } catch (error) {
-        console.log("Alguns dados não encontrados para este mês.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSavedData();
+    fetchData(setVendasRaw, setReunioesRaw, setRules, setGoals);
   }, [selectedMonth, selectedYear]);
-
-  const processFile = async (blob, type) => {
-    const arrayBuffer = await blob.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: "array" });
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
-    if (type === "VENDAS") setVendasRaw(rows);
-    if (type === "REUNIOES") setReunioesRaw(rows);
-  };
-
-  const handleFileUpload = async (e, type) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    try {
-      await processFile(file, type);
-      const fileName = getFileName(type);
-      const { error } = await supabase.storage.from('planilhas').upload(fileName, file, { upsert: true });
-      if (error) throw error;
-      alert(`Arquivo salvo com sucesso para ${selectedMonth}/${selectedYear}!`);
-    } catch (err) {
-      console.error("Erro upload:", err);
-      alert("Erro ao salvar. Verifique se o bucket 'planilhas' existe e é público no Supabase.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // --- EXPORTAR RELATÓRIO ---
-  const exportReport = () => {
-    if (goals.closedVariables.length === 0) {
-      alert("Não há dados fechados para exportar.");
-      return;
-    }
-
-    const dataToExport = goals.closedVariables.map(v => ({
-        "Mês": reportTitle,
-        "Colaborador": v.name,
-        "Cargo": v.role,
-        "Variável a Receber": v.value,
-        "Meta Pessoal": v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-",
-        "Resultado Real": v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-",
-        "Atingimento %": v.achievement ? `${v.achievement.toFixed(2)}%` : "-",
-        "Data Fechamento": v.date
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Fechamento");
-    XLSX.writeFile(wb, `Relatorio_Variavel_${reportTitle.replace(/ /g, "_")}.xlsx`);
-  };
-
-  // --- MOTORES DE CÁLCULO ---
-  const parseNum = (val, isScore = false) => {
-    if (val === undefined || val === null || val === "") return 0;
-    if (typeof val === "number") return val;
-    let s = val.toString().trim().replace("R$", "").trim();
-    const lastComma = s.lastIndexOf(",");
-    const lastDot = s.lastIndexOf(".");
-    if (lastComma > lastDot) s = s.replace(/\./g, "").replace(",", ".");
-    else if (lastDot > lastComma) s = s.replace(/,/g, "");
-    return parseFloat(s) || 0;
-  };
-
-  const extractValue = (row, key) => {
-    const keys = Object.keys(row);
-    const map = {
-      sdr: ["Negócio - SDR", "sdr", "sdr responsável", "Atividade - Proprietário", "Proprietário da atividade"],
-      proprietario: ["Negócio - Proprietário", "Proprietário", "closer", "proprietario"],
-      valor: ["Negócio - Valor do negócio", "Valor", "Amount"],
-      soma: ["Soma TOTAL", "soma total", "score"],
-      nome: ["Organização - Nome", "Negócio - Nome do negócio", "Nome", "cliente", "titulo"],
-    };
-    const targets = map[key.toLowerCase()] || [key.toLowerCase()];
-    for (let sk of targets) {
-      const found = keys.find((k) => k.toLowerCase().trim() === sk.toLowerCase().trim());
-      if (found) return row[found];
-    }
-    return undefined;
-  };
-
-  const normalizeName = (name) =>
-    name ? name.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
-
-  const isSamePerson = (nameA, nameB) => {
-    const nA = normalizeName(nameA);
-    const nB = normalizeName(nameB);
-    return nA && nB && (nA.includes(nB) || nB.includes(nA));
-  };
 
   // --- STORE ---
   const dataStore = useMemo(() => {
@@ -492,6 +128,32 @@ const App = () => {
     };
   }, [vendasRaw, reunioesRaw, goals.timeRealManual, goals.timeMeta]);
 
+  // --- HANDLERS ---
+  const handleSaveManualData = async () => {
+    const success = await saveData(rules, goals);
+    if (success) toast.success("Dados manuais salvos com sucesso!");
+    else toast.error("Erro ao salvar dados manuais.");
+  };
+
+  const handleFileUpload = async (e, type) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const { success, rows, error } = await handleUpload(file, type);
+    if (success) {
+      if (type === "VENDAS") setVendasRaw(rows);
+      if (type === "REUNIOES") setReunioesRaw(rows);
+      toast.success(`Arquivo salvo com sucesso para ${selectedMonth}/${selectedYear}!`);
+    } else {
+      toast.error("Erro ao salvar arquivo.");
+    }
+  };
+
+  const handleConsolidateHistory = async () => {
+    const { success, message } = await consolidateHistory(goals, dataStore);
+    if (success) toast.success(message);
+    else toast.error(message);
+  };
+
   // --- ACTIONS ---
   const removeClosed = (id) =>
     setGoals((prev) => ({ ...prev, closedVariables: prev.closedVariables.filter((v) => v.id !== id) }));
@@ -501,17 +163,18 @@ const App = () => {
       ...prev,
       closedVariables: [
         ...prev.closedVariables,
-        { 
-            id: Date.now(), 
-            name, 
-            role, 
-            value, 
-            date: new Date().toLocaleDateString(),
-            ...extras 
+        {
+          id: Date.now(),
+          name,
+          role,
+          value,
+          date: new Date().toLocaleDateString(),
+          ...extras
         },
       ],
     }));
     setActiveTab("FECHAMENTO");
+    toast.success("Variável fechada com sucesso!");
   };
 
   const updateExtraValue = (person, index, field, value) => {
@@ -529,12 +192,7 @@ const App = () => {
     });
   };
 
-  const getTierValue = (list, val, field = "min") => {
-    const sorted = [...list].sort((a, b) => b[field] - a[field]);
-    return sorted.find((item) => val >= item[field]);
-  };
-
-  // --- CALC SDR ---
+  // --- CALCULATION LOGIC ---
   const calculateSDR = (name) => {
     const myReunioes = reunioesRaw.filter((r) => isSamePerson(extractValue(r, "sdr"), name));
     const myVendasRaw = vendasRaw.filter((v) => isSamePerson(extractValue(v, "sdr"), name));
@@ -569,7 +227,6 @@ const App = () => {
     return { v1, v2, v3, v4, total: v1 + v2 + v3 + v4 + vExtra, atingimentoMeta, metaIndiv, meetingsDetails, salesDetails, extras, totalReunioesRealizadas: myReunioes.length };
   };
 
-  // --- CALC CLOSER ---
   const calculateCloser = (name) => {
     const myVendasRaw = vendasRaw.filter((v) => isSamePerson(extractValue(v, "proprietario"), name));
     const fatIndiv = myVendasRaw.reduce((acc, v) => acc + parseNum(extractValue(v, "valor")), 0);
@@ -586,7 +243,6 @@ const App = () => {
     return { v1, v2, total: v1 + v2 + vExtra, fatIndiv, metaIndiv, perc, atingimentoIndiv, extras, myVendas: myVendasRaw.map((v) => ({ name: extractValue(v, "nome"), value: parseNum(extractValue(v, "valor")) })) };
   };
 
-  // --- CALC GESTOR / PRODUTO ---
   const calculateManagement = (role) => {
     const cfg = rules[role];
     const atingimentoFat = dataStore.atingimentoTime;
@@ -607,12 +263,11 @@ const App = () => {
     return { v1, v2, v3, v4, v5, total: v1 + v2 + v3 + v4 + v5 + vExtra, totalQualifPaga, extras };
   };
 
-  // --- CALC LDR (CORRIGIDO) ---
   const calculateLDR = () => {
     const stats = goals.ldrStats || { garimpados: 0, cards: 0, garimpadosMeta: 1, cardsMeta: 1 };
     const atingimentoReunioes = goals.meetingsMetaTotal > 0 ? (dataStore.totalMeetings / goals.meetingsMetaTotal) * 100 : 0;
     const atingimentoFaturamento = dataStore.atingimentoTime;
-     
+
     const atingimentoGarimpados = stats.garimpadosMeta > 0 ? (stats.garimpados / stats.garimpadosMeta) * 100 : 0;
     const atingimentoCards = stats.cardsMeta > 0 ? (stats.cards / stats.cardsMeta) * 100 : 0;
 
@@ -625,28 +280,45 @@ const App = () => {
     const extras = goals.individualExtras[name] || [{ label: "Bônus 1", val: 0 }, { label: "Bônus 2", val: 0 }, { label: "Bônus 3", val: 0 }];
     const vExtra = extras.reduce((a, b) => a + b.val, 0);
 
-    return { 
-        v1, v2, v3, v4, 
-        total: v1 + v2 + v3 + v4 + vExtra, 
-        extras, 
-        atingimentoGarimpados, 
-        atingimentoCards, 
-        atingimentoReunioes, 
-        atingimentoFaturamento 
+    return {
+      v1, v2, v3, v4,
+      total: v1 + v2 + v3 + v4 + vExtra,
+      extras,
+      atingimentoGarimpados,
+      atingimentoCards,
+      atingimentoReunioes,
+      atingimentoFaturamento,
+      atingimentoMedia: (atingimentoGarimpados + atingimentoCards) / 2 // Calculo da média
     };
   };
 
-  // --- PREPARAÇÃO DE DADOS PARA HISTÓRICO ---
-  const sortedMonths = Object.keys(historyDB).sort();
-  const allPeopleInHistory = useMemo(() => {
-    const names = new Set();
-    Object.values(historyDB).forEach(month => {
-      month.individuals?.forEach(ind => names.add(ind.name));
-    });
-    return ["GLOBAL", ...Array.from(names).sort()];
-  }, [historyDB]);
+  // --- EXPORTAR RELATÓRIO ---
+  const exportReport = () => {
+    if (goals.closedVariables.length === 0) {
+      toast.error("Não há dados fechados para exportar.");
+      return;
+    }
+
+    const dataToExport = goals.closedVariables.map(v => ({
+      "Mês": reportTitle,
+      "Colaborador": v.name,
+      "Cargo": v.role,
+      "Variável a Receber": v.value,
+      "Meta Pessoal": v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-",
+      "Resultado Real": v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-",
+      "Atingimento %": v.achievement ? `${v.achievement.toFixed(2)}%` : "-",
+      "Data Fechamento": v.date
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fechamento");
+    XLSX.writeFile(wb, `Relatorio_Variavel_${reportTitle.replace(/ /g, "_")}.xlsx`);
+    toast.success("Relatório gerado com sucesso!");
+  };
 
   // --- FILTROS DE HISTÓRICO ---
+  const sortedMonths = Object.keys(historyDB).sort();
   const availableYears = useMemo(() => {
     const years = new Set();
     sortedMonths.forEach(m => years.add(m.split('-')[0]));
@@ -655,1259 +327,589 @@ const App = () => {
 
   const filteredMonths = useMemo(() => {
     let result = [...sortedMonths];
-    if (historyFilter === 'LAST_3') {
-      return result.slice(-3);
-    }
-    if (historyFilter === 'LAST_6') {
-      return result.slice(-6);
-    }
-    if (historyFilter === 'ALL') {
-      return result;
-    }
+    if (historyFilter === 'LAST_3') return result.slice(-3);
+    if (historyFilter === 'LAST_6') return result.slice(-6);
+    if (historyFilter === 'ALL') return result;
     return result.filter(m => m.startsWith(historyFilter));
   }, [sortedMonths, historyFilter]);
 
-  // --- PREPARAÇÃO DE DADOS PARA GRÁFICO ---
+  // --- DADOS PARA GRÁFICO ---
   const chartData = useMemo(() => {
     if (filteredMonths.length === 0) return { data: [], lines: [] };
 
     if (selectedHistoryPerson === "GLOBAL") {
-        return {
-            data: filteredMonths.map(m => ({
-                label: historyDB[m].title.split(' ')[0].substring(0,3), 
-                meta: historyDB[m].teamStats.revenueGoal,
-                real: historyDB[m].teamStats.revenueReal
-            })),
-            lines: [
-                { key: 'meta', color: '#94a3b8', name: 'Meta' },
-                { key: 'real', color: '#00D4C5', name: 'Realizado' }
-            ]
-        };
+      return {
+        data: filteredMonths.map(m => ({
+          label: historyDB[m].title.split(' ')[0].substring(0, 3),
+          meta: historyDB[m].teamStats.revenueGoal,
+          real: historyDB[m].teamStats.revenueReal
+        })),
+        lines: [
+          { key: 'meta', color: '#94a3b8', name: 'Meta' },
+          { key: 'real', color: '#00D4C5', name: 'Realizado' }
+        ]
+      };
     } else {
-        return {
-            data: filteredMonths.map(m => {
-                const monthData = historyDB[m];
-                const person = monthData.individuals.find(p => p.name === selectedHistoryPerson);
-                const currentRole = person?.role || (monthData.individuals.find(p => p.name === selectedHistoryPerson)?.role);
-                
-                let personAch = 0;
-                let teamAvgAch = 0;
+      return {
+        data: filteredMonths.map(m => {
+          const monthData = historyDB[m];
+          const person = monthData.individuals.find(p => p.name === selectedHistoryPerson);
+          const currentRole = person?.role || (monthData.individuals.find(p => p.name === selectedHistoryPerson)?.role);
 
-                if (currentRole) {
-                    if (person) personAch = person.achievement;
-                    const peers = monthData.individuals.filter(p => p.role === currentRole);
-                    if (peers.length > 0) {
-                        const totalAch = peers.reduce((acc, p) => acc + p.achievement, 0);
-                        teamAvgAch = totalAch / peers.length;
-                    }
-                }
+          let personAch = 0;
+          let teamAvgAch = 0;
 
-                return {
-                    label: monthData.title.split(' ')[0].substring(0,3),
-                    person: personAch,
-                    average: teamAvgAch
-                };
-            }),
-            lines: [
-                { key: 'person', color: '#00D4C5', name: 'Atingimento Individual (%)' },
-                { key: 'average', color: '#f59e0b', name: 'Média da Equipe (%)' }
-            ]
-        };
+          if (currentRole) {
+            if (person) personAch = person.achievement;
+            const peers = monthData.individuals.filter(p => p.role === currentRole);
+            if (peers.length > 0) {
+              const totalAch = peers.reduce((acc, p) => acc + p.achievement, 0);
+              teamAvgAch = totalAch / peers.length;
+            }
+          }
+
+          return {
+            label: monthData.title.split(' ')[0].substring(0, 3),
+            person: personAch,
+            average: teamAvgAch
+          };
+        }),
+        lines: [
+          { key: 'person', color: '#00D4C5', name: 'Atingimento Individual (%)' },
+          { key: 'average', color: '#f59e0b', name: 'Média da Equipe (%)' }
+        ]
+      };
     }
   }, [filteredMonths, historyDB, selectedHistoryPerson]);
 
+  const allPeopleInHistory = useMemo(() => {
+    const names = new Set();
+    Object.values(historyDB).forEach(month => {
+      month.individuals?.forEach(ind => names.add(ind.name));
+    });
+    return ["GLOBAL", ...Array.from(names).sort()];
+  }, [historyDB]);
+
+  // --- DADOS PARA TABELA (HISTÓRICO) ---
+  const historyTableData = useMemo(() => {
+    let list = [];
+    if (selectedHistoryPerson === "GLOBAL") {
+      list = filteredMonths.map(m => ({
+        month: historyDB[m].title,
+        person: "Equipe",
+        role: "Global",
+        score: "-",
+        value: historyDB[m].teamStats.revenueReal,
+        achievement: historyDB[m].teamStats.revenueGoal > 0 ? (historyDB[m].teamStats.revenueReal / historyDB[m].teamStats.revenueGoal) * 100 : 0,
+        variable: historyDB[m].individuals.reduce((acc, ind) => acc + ind.value, 0) // Sum of variables
+      }));
+    } else {
+      filteredMonths.forEach(m => {
+        const p = historyDB[m].individuals.find(i => i.name === selectedHistoryPerson);
+        if (p) {
+          list.push({
+            month: historyDB[m].title,
+            person: p.name,
+            role: p.role,
+            score: p.role === "SDR" ? p.realized : "-",
+            value: p.role === "Closer" ? p.realized : p.value,
+            achievement: p.achievement,
+            variable: p.value
+          });
+        }
+      });
+    }
+
+    return list.sort((a, b) => {
+      if (historySort === "VALUE_DESC") return b.variable - a.variable;
+      if (historySort === "ACH_DESC") return b.achievement - a.achievement;
+      return 0;
+    });
+  }, [filteredMonths, historyDB, selectedHistoryPerson, historySort, rules]);
+
+  // --- DADOS PARA TABELA DE FECHAMENTO (COM SORT) ---
+  const closedTableData = useMemo(() => {
+    let data = [...goals.closedVariables];
+    if (fechamentoSort === "DATE_DESC") return data.sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (fechamentoSort === "VALUE_DESC") return data.sort((a, b) => b.value - a.value);
+    if (fechamentoSort === "VALUE_ASC") return data.sort((a, b) => a.value - b.value);
+    return data;
+  }, [goals.closedVariables, fechamentoSort]);
+
+
+  // --- RENDER ---
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#021017] to-[#05202B] font-sans text-white pb-12 selection:bg-[#00D4C5]/30 relative">
-      
+      <Toaster position="top-right" />
+
       {/* BOTÃO FLUTUANTE DE SALVAR DADOS MANUAIS */}
-      <button 
-        onClick={saveManualData}
-        className="fixed bottom-8 right-8 z-50 bg-[#00D4C5] text-[#010B1D] p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest"
+      <button
+        onClick={handleSaveManualData}
+        disabled={savingManual}
+        className="fixed bottom-8 right-8 z-50 bg-[#00D4C5] text-[#010B1D] p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest disabled:opacity-50"
       >
         {savingManual ? <Loader2 className="animate-spin" /> : <Save />}
         <span>Salvar Alterações</span>
       </button>
 
-      <nav className="bg-[#0A2230]/80 backdrop-blur-xl border-b border-[#00D4C5]/10 px-8 py-5 sticky top-0 z-50 shadow-2xl">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            <div className="bg-[#00D4C5] p-3 rounded-2xl text-[#021017] shadow-[0_0_20px_rgba(0,212,197,0.4)]">
-              <Calculator size={24} />
-            </div>
-            <div>
-              <div className="flex items-center gap-3">
-                 <input
-                  type="text"
-                  value={reportTitle}
-                  readOnly
-                  className="text-xl font-black tracking-tight bg-transparent border-none p-0 focus:ring-0 w-64 outline-none capitalize"
-                />
-                 {loading && <Loader2 size={16} className="animate-spin text-[#00D4C5]" />}
-              </div>
-              <p className="text-[10px] text-[#00D4C5] font-black uppercase tracking-[0.3em] mt-1">
-                Variável Comercial Branddi
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1 bg-white/5 p-1.5 rounded-2xl overflow-x-auto max-w-full">
-            {["DASHBOARD", "SDR", "CLOSER", "GESTOR", "PRODUCT", "LDR", "FECHAMENTO", "HISTÓRICO", "REGRAS"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => {
-                  setActiveTab(tab);
-                  if(tab !== "HISTÓRICO") setSelectedPerson("");
-                }}
-                className={`px-5 py-2.5 rounded-xl text-[11px] font-black tracking-wider transition-all uppercase ${
-                  activeTab === tab ? "bg-[#00D4C5] text-[#021017]" : "text-slate-400 hover:text-white hover:bg-white/10"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-        </div>
-      </nav>
+      <NavBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        reportTitle={reportTitle}
+        loading={loading}
+        setSelectedPerson={setSelectedPerson}
+      />
 
       <main className="max-w-7xl mx-auto p-8">
-        
-        {/* SELETOR DE MÊS E ANO (GLOBAL - SÓ APARECE SE NÃO FOR HISTÓRICO) */}
+
+        {/* SELETOR DE MÊS E ANO (GLOBAL) */}
         {activeTab !== "HISTÓRICO" && (
           <div className="flex justify-end items-center gap-4 mb-8">
-             <div className="flex items-center gap-2 bg-[#0B132B] px-4 py-2 rounded-xl border border-white/10">
-                <Calendar size={16} className="text-[#00D4C5]" />
-                <select 
-                  value={selectedMonth} 
-                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                  className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
-                >
-                  {Array.from({length: 12}, (_, i) => i + 1).map(m => (
-                    <option key={m} value={m} className="bg-[#0B132B]">{new Date(0, m-1).toLocaleString('pt-BR', {month: 'long'})}</option>
-                  ))}
-                </select>
-                <select 
-                  value={selectedYear} 
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
-                >
-                  {[2024, 2025, 2026, 2027].map(y => (
-                    <option key={y} value={y} className="bg-[#0B132B]">{y}</option>
-                  ))}
-                </select>
-             </div>
+            <div className="flex items-center gap-2 bg-[#0B132B] px-4 py-2 rounded-xl border border-white/10">
+              <Calendar size={16} className="text-[#00D4C5]" />
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                  <option key={m} value={m} className="bg-[#0B132B]">{new Date(0, m - 1).toLocaleString('pt-BR', { month: 'long' })}</option>
+                ))}
+              </select>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="bg-transparent font-bold text-sm outline-none text-white cursor-pointer"
+              >
+                {[2024, 2025, 2026, 2027].map(y => (
+                  <option key={y} value={y} className="bg-[#0B132B]">{y}</option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
-        {/* DASHBOARD */}
+        {/* --- DASHBOARD --- */}
         {activeTab === "DASHBOARD" && (
-          <div className="space-y-10 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center bg-[#0A2230] p-8 rounded-[2.5rem] border border-[#00D4C5]/10 shadow-xl">
-              <div>
-                <h2 className="text-2xl font-black text-white tracking-tight">Performance Global</h2>
-                <p className="text-sm text-slate-400 font-medium">Equipe Comercial de {reportTitle}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Atingimento do mês</p>
-                <p className="text-2xl font-black text-[#00D4C5]">{dataStore.atingimentoTime.toFixed(1)}%</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="space-y-6 animate-fadeIn">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <StatCard
-                label="Faturamento Equipe"
+                label="Faturamento Real"
                 value={formatCurrency(dataStore.faturamentoTimeReal)}
-                sub={`${dataStore.atingimentoTime.toFixed(1)}% da meta batida`}
-                icon={<DollarSign size={20} />}
+                sub={`${dataStore.atingimentoTime.toFixed(1)}% da meta`}
+                icon={<DollarSign className="text-white" size={24} />}
               />
               <StatCard
                 label="Total Reuniões"
                 value={dataStore.totalMeetings}
-                sub={`${goals.meetingsMetaTotal > 0 ? ((dataStore.totalMeetings / goals.meetingsMetaTotal) * 100).toFixed(1) : 0}% do esperado`}
-                icon={<Activity size={20} />}
+                sub="Oportunidades geradas"
+                icon={<Calendar className="text-white" size={24} />}
               />
               <StatCard
                 label="Total Deals"
                 value={dataStore.totalDeals}
-                sub={`${goals.dealsMetaTotal > 0 ? ((dataStore.totalDeals / goals.dealsMetaTotal) * 100).toFixed(1) : 0}% de conversão`}
-                icon={<Award size={20} />}
+                sub="Deals criados"
+                icon={<BriefcaseIcon className="text-white" size={24} />}
               />
             </div>
 
-            <div className="bg-[#0B132B] p-10 rounded-[3rem] border border-white/5 shadow-2xl max-w-5xl mx-auto">
-              <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] mb-10 flex items-center gap-3 border-b border-white/5 pb-6">
-                <Sliders size={20} className="text-[#00C9C8]" /> Ajustes Globais
-              </h3>
+            <div className="bg-[#0A2230]/40 p-8 rounded-[2.5rem] border border-white/5 backdrop-blur-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <Sliders size={20} className="text-[#00D4C5]" />
+                <h2 className="text-xl font-black uppercase tracking-widest text-[#00D4C5]">Ajustes Globais</h2>
+              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-10 font-black">
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Meta Fat. (R$)</label>
-                  <input
-                    type="number"
-                    value={goals.timeMeta}
-                    onChange={(e) => setGoals({ ...goals, timeMeta: parseNum(e.target.value) })}
-                    className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-[#00D4C5] outline-none ring-1 ring-white/10 focus:ring-[#00D4C5]"
-                  />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Meta Faturamento</label>
+                  <div className="flex items-center gap-2 bg-[#0B132B] p-4 rounded-2xl border border-white/10 focus-within:border-[#00D4C5] transition-colors">
+                    <Target size={18} className="text-[#00D4C5]" />
+                    <input
+                      type="number"
+                      value={goals.timeMeta}
+                      onChange={(e) => setGoals(prev => ({ ...prev, timeMeta: parseNum(e.target.value) }))}
+                      className="bg-transparent font-black text-lg outline-none w-full text-white placeholder-slate-600"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fat. Real Manual</label>
-                  <input
-                    type="text"
-                    value={goals.timeRealManual}
-                    onChange={(e) => setGoals({ ...goals, timeRealManual: e.target.value })}
-                    className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-white outline-none ring-1 ring-white/10"
-                  />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fat. Real (Manual)</label>
+                  <div className="flex items-center gap-2 bg-[#0B132B] p-4 rounded-2xl border border-white/10 focus-within:border-[#00D4C5] transition-colors">
+                    <Edit2 size={18} className="text-amber-400" />
+                    <input
+                      type="number"
+                      value={goals.timeRealManual}
+                      placeholder="Auto"
+                      onChange={(e) => setGoals(prev => ({ ...prev, timeRealManual: e.target.value }))}
+                      className="bg-transparent font-black text-lg outline-none w-full text-white placeholder-slate-600"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Meta Reuniões (Total)</label>
-                  <input
-                    type="number"
-                    value={goals.meetingsMetaTotal}
-                    onChange={(e) => setGoals({ ...goals, meetingsMetaTotal: parseNum(e.target.value) })}
-                    className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-cyan-400 ring-1 ring-white/10"
-                  />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Meta Reuniões (Time)</label>
+                  <div className="flex items-center gap-2 bg-[#0B132B] p-4 rounded-2xl border border-white/10 focus-within:border-[#00D4C5] transition-colors">
+                    <UsersIcon className="text-[#00D4C5]" size={18} />
+                    <input
+                      type="number"
+                      value={goals.meetingsMetaTotal}
+                      onChange={(e) => setGoals(prev => ({ ...prev, meetingsMetaTotal: parseNum(e.target.value) }))}
+                      className="bg-transparent font-black text-lg outline-none w-full text-white"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Meta Vendas</label>
-                  <input
-                    type="number"
-                    value={goals.dealsMetaTotal}
-                    onChange={(e) => setGoals({ ...goals, dealsMetaTotal: parseNum(e.target.value) })}
-                    className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-emerald-400 ring-1 ring-white/10"
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Eficiência %</label>
-                  <input
-                    type="number"
-                    value={goals.teamEfficiencyManual}
-                    onChange={(e) => setGoals({ ...goals, teamEfficiencyManual: parseNum(e.target.value) })}
-                    className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-indigo-400 ring-1 ring-white/10"
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Meta Indiv. SDR</label>
-                  <input
-                    type="number"
-                    value={goals.sdrMetaDefault}
-                    onChange={(e) => setGoals({ ...goals, sdrMetaDefault: parseNum(e.target.value) })}
-                    className="w-full bg-white/5 border-none rounded-2xl px-5 py-4 font-black text-pink-400 ring-1 ring-white/10"
-                  />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Eficiência Time (%)</label>
+                  <div className="flex items-center gap-2 bg-[#0B132B] p-4 rounded-2xl border border-white/10 focus-within:border-[#00D4C5] transition-colors">
+                    <Activity size={18} className="text-[#00D4C5]" />
+                    <input
+                      type="number"
+                      value={goals.teamEfficiencyManual}
+                      onChange={(e) => setGoals(prev => ({ ...prev, teamEfficiencyManual: parseNum(e.target.value) }))}
+                      className="bg-transparent font-black text-lg outline-none w-full text-white"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-6 border-t border-white/5 pt-10">
-                <label
-                  className={`flex-1 flex items-center justify-center gap-3 bg-white/5 text-white p-5 rounded-2xl font-black text-[11px] uppercase tracking-widest cursor-pointer transition-all border border-white/5 active:scale-95 ${
-                    uploading ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"
-                  }`}
-                >
-                    {uploading ? <Loader2 className="animate-spin text-[#00C9C8]" /> : <Cloud size={18} className="text-[#00C9C8]" />}
-                  <span>Importar Vendas (Deals)</span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".xlsx,.csv"
-                    disabled={uploading}
-                    onChange={(e) => handleFileUpload(e, "VENDAS")}
-                  />
-                </label>
+              {/* UPLOAD AREA */}
+              <div className="mt-10 pt-10 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-[#0B132B] p-6 rounded-3xl border border-dashed border-slate-700 hover:border-[#00D4C5] transition-colors relative group">
+                  <input type="file" onChange={(e) => handleFileUpload(e, "VENDAS")} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                  <div className="flex flex-col items-center justify-center gap-3 text-slate-400 group-hover:text-[#00D4C5] transition-colors">
+                    <div className="bg-white/5 p-4 rounded-full">
+                      {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-widest">Upload Planilha Vendas</span>
+                  </div>
+                </div>
 
-                <label
-                  className={`flex-1 flex items-center justify-center gap-3 bg-white/5 text-white p-5 rounded-2xl font-black text-[11px] uppercase tracking-widest cursor-pointer transition-all border border-white/5 active:scale-95 ${
-                    uploading ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"
-                  }`}
-                >
-                    {uploading ? <Loader2 className="animate-spin text-[#00C9C8]" /> : <Cloud size={18} className="text-[#00C9C8]" />}
-                  <span>Importar Reuniões (Activities)</span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".xlsx,.csv"
-                    disabled={uploading}
-                    onChange={(e) => handleFileUpload(e, "REUNIOES")}
-                  />
-                </label>
+                <div className="bg-[#0B132B] p-6 rounded-3xl border border-dashed border-slate-700 hover:border-[#00D4C5] transition-colors relative group">
+                  <input type="file" onChange={(e) => handleFileUpload(e, "REUNIOES")} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                  <div className="flex flex-col items-center justify-center gap-3 text-slate-400 group-hover:text-[#00D4C5] transition-colors">
+                    <div className="bg-white/5 p-4 rounded-full">
+                      {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-widest">Upload Planilha Reuniões</span>
+                  </div>
+                </div>
               </div>
-               <p className="mt-4 text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                Os arquivos serão salvos para {reportTitle}. Se mudar o mês no topo, os dados serão recarregados.
-              </p>
             </div>
           </div>
         )}
 
-        {/* SDR */}
+        {/* --- SDR TAB --- */}
         {activeTab === "SDR" && (
-          <div className="space-y-10 animate-in fade-in">
-            <div className="max-w-md mx-auto">
-              <div className="bg-[#0B132B] p-6 rounded-3xl border border-white/5 flex items-center gap-4 shadow-xl">
-                <Search className="text-slate-500" size={20} />
-                <select
-                  value={selectedPerson}
-                  onChange={(e) => setSelectedPerson(e.target.value)}
-                  className="flex-1 bg-transparent font-black text-white focus:outline-none text-sm"
-                >
-                  <option value="" className="bg-[#0B132B]">
-                    Escolher Colaborador...
-                  </option>
-                  {dataStore.people.sdrs.map((p) => (
-                    <option key={p} value={p} className="bg-[#0B132B]">
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {selectedPerson &&
-              (() => {
-                const res = calculateSDR(selectedPerson);
-                const name = goals.customNames[selectedPerson] || selectedPerson;
-
-                return (
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                    <div className="lg:col-span-4 space-y-8">
-                      <div className="bg-[#0B132B] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden ring-1 ring-white/10 border border-[#00D4C5]/20">
-                        <p className="text-[#00C9C8] font-black text-[10px] uppercase tracking-[0.3em] mb-4">
-                          Demonstrativo SDR
-                        </p>
-
-                        <div className="flex items-center gap-2 mb-10 group">
-                          <input
-                            type="text"
-                            value={name}
-                            onChange={(e) =>
-                              setGoals({
-                                ...goals,
-                                customNames: { ...goals.customNames, [selectedPerson]: e.target.value },
-                              })
-                            }
-                            className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
-                          />
-                          <Edit2 size={16} className="text-white/20 group-hover:text-[#00C9C8] transition-colors" />
-                        </div>
-
-                        <div className="space-y-6">
-                          <SummaryItem label="Variável Bruto Total" value={res.total} highlight />
-                          <SummaryItem label="1. Bônus Meta Reuniões" value={res.v1} />
-                          <SummaryItem label="2. Bônus Equipe" value={res.v2} />
-                          <SummaryItem label="3. Qualificação (Score)" value={res.v3} />
-                          <SummaryItem label="4. Vendas Iniciadas" value={res.v4} />
-
-                          <div className="pt-6 border-t border-white/5">
-                            <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
-                              Bônus Extras (Manual)
-                            </p>
-                            {res.extras.map((ex, i) => (
-                              <div key={i} className="flex gap-2 mb-2">
-                                <input
-                                  type="text"
-                                  value={ex.label}
-                                  onChange={(e) => updateExtraValue(selectedPerson, i, "label", e.target.value)}
-                                  className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white"
-                                />
-                                <input
-                                  type="number"
-                                  value={ex.val || ""}
-                                  onChange={(e) => updateExtraValue(selectedPerson, i, "val", e.target.value)}
-                                  className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right"
-                                />
-                              </div>
-                            ))}
-                          </div>
-
-                          <button
-                            onClick={() => closeVariable(name, "SDR", res.total, {
-                                achievement: res.atingimentoMeta,
-                                target: res.metaIndiv,
-                                realized: res.totalReunioesRealizadas
-                            })}
-                            className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-cyan-500/20 uppercase tracking-widest text-[11px]"
-                          >
-                            <Lock size={18} /> Fechar Variável
-                          </button>
-                        </div>
-
-                        <div className="mt-10 pt-10 border-t border-white/5 space-y-4">
-                          <div className="flex justify-between text-[11px] uppercase text-slate-400">
-                            <span>Atingimento Reuniões</span>
-                            <span className="text-[#00C9C8] font-black">{res.atingimentoMeta.toFixed(1)}%</span>
-                          </div>
-                          <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-[#00C9C8] transition-all duration-1000 shadow-[0_0_10px_#00C9C8]"
-                              style={{ width: `${Math.min(res.atingimentoMeta, 100)}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="lg:col-span-8 space-y-8">
-                      <section className="bg-white/5 rounded-[2.5rem] border border-white/5 overflow-hidden shadow-sm">
-                        <h3 className="p-7 font-black text-xs uppercase tracking-widest bg-white/5 border-b border-white/5 flex items-center gap-3">
-                          <Star size={18} className="text-amber-500" /> Reuniões Auditadas
-                        </h3>
-
-                        <table className="w-full text-left text-sm font-semibold">
-                          <thead className="bg-[#0A2230] border-b border-white/5 font-black text-slate-500 uppercase text-[10px]">
-                            <tr>
-                              <th className="px-8 py-5">Lead / Empresa</th>
-                              <th className="px-8 py-5 text-center">Score</th>
-                              <th className="px-8 py-5 text-right">Bônus</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/5 font-medium">
-                            {res.meetingsDetails.map((r, i) => (
-                              <tr key={i} className="hover:bg-white/5 transition-colors">
-                                <td className="px-8 py-5 text-white font-bold">{r.name}</td>
-                                <td className="px-8 py-5 text-center font-black text-[#00D4C5]">
-                                  {r.score.toFixed(2)}
-                                </td>
-                                <td className="px-8 py-5 text-right font-black text-white/50">
-                                  {formatCurrency(r.bonus)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </section>
-
-                      <section className="bg-white/5 rounded-[2.5rem] border border-white/5 overflow-hidden shadow-sm">
-                        <h3 className="p-7 font-black text-xs uppercase tracking-widest bg-emerald-500/5 text-emerald-400 border-b border-white/5 flex items-center gap-3">
-                          <TrendingUp size={18} /> Vendas Iniciadas (T4)
-                        </h3>
-
-                        <table className="w-full text-left text-sm">
-                          <thead className="bg-[#0A2230] border-b border-white/5 font-black text-slate-500 uppercase text-[10px]">
-                            <tr>
-                              <th className="px-8 py-5">Negócio</th>
-                              <th className="px-8 py-5 text-center">Valor Bruto</th>
-                              <th className="px-8 py-5 text-right text-emerald-400">Bônus</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/5 font-medium">
-                            {res.salesDetails.map((s, i) => (
-                              <tr key={i} className="hover:bg-white/5 transition-colors">
-                                <td className="px-8 py-5 text-white font-bold">{s.name}</td>
-                                <td className="px-8 py-5 text-center text-white/50 font-bold">
-                                  {formatCurrency(s.revenue)}
-                                </td>
-                                <td className="px-8 py-5 text-right text-emerald-400 font-black">
-                                  {formatCurrency(s.bonus)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </section>
-                    </div>
-                  </div>
-                );
-              })()}
-          </div>
-        )}
-
-        {/* CLOSER */}
-        {activeTab === "CLOSER" && (
-          <div className="space-y-10 animate-in fade-in duration-500">
-            <div className="max-w-md mx-auto">
-              <div className="bg-[#0A2230] p-6 rounded-3xl border border-white/5 flex items-center gap-4 shadow-xl shadow-[#00C9C8]/5">
-                <Search className="text-slate-500" size={20} />
-                <select
-                  value={selectedPerson}
-                  onChange={(e) => setSelectedPerson(e.target.value)}
-                  className="flex-1 bg-transparent font-black text-white focus:outline-none text-sm"
-                >
-                  <option value="" className="bg-[#0A2230]">
-                    Selecionar Closer...
-                  </option>
-                  {dataStore.people.closers.map((p) => (
-                    <option key={p} value={p} className="bg-[#0A2230]">
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {selectedPerson &&
-              (() => {
-                const res = calculateCloser(selectedPerson);
-                const name = goals.customNames[selectedPerson] || selectedPerson;
-
-                return (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                    <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden ring-1 ring-white/10 border border-[#00D4C5]/20">
-                      <p className="text-indigo-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
-                        Demonstrativo Closer
-                      </p>
-
-                      <div className="flex items-center gap-2 mb-10 group">
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) =>
-                            setGoals({
-                              ...goals,
-                              customNames: { ...goals.customNames, [selectedPerson]: e.target.value },
-                            })
-                          }
-                          className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
-                        />
-                        <Edit2
-                          size={16}
-                          className="text-white/20 group-hover:text-indigo-400 transition-colors cursor-pointer"
-                        />
-                      </div>
-
-                      <div className="space-y-6">
-                        <SummaryItem label="Variável Total" value={res.total} highlight />
-                        <SummaryItem label="Comissão Individual" value={res.v1} />
-                        <SummaryItem label="Bônus Time Global" value={res.v2} />
-
-                        <div className="mt-10 pt-10 border-t border-white/5 space-y-6">
-                          <div>
-                            <p className="text-[10px] font-black uppercase text-indigo-400 mb-1 tracking-widest">
-                              Realizado Individual
-                            </p>
-                            <p className="text-2xl font-black">{formatCurrency(res.fatIndiv)}</p>
-                          </div>
-
-                          <div className="flex justify-between items-center py-3 border-b border-white/5">
-                            <span className="text-[10px] text-slate-500 font-black uppercase flex items-center gap-2">
-                              <Target size={12} /> Meta Individual
-                            </span>
-                            <input
-                              type="number"
-                              value={goals.individualCloserGoals[selectedPerson] || goals.closerMetaBase}
-                              onChange={(e) =>
-                                setGoals({
-                                  ...goals,
-                                  individualCloserGoals: {
-                                    ...goals.individualCloserGoals,
-                                    [selectedPerson]: parseNum(e.target.value),
-                                  },
-                                })
-                              }
-                              className="w-24 bg-white/5 text-white text-right font-black border-none rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 ring-[#00D4C5]"
-                            />
-                          </div>
-
-                          <p className="text-[10px] opacity-40 font-bold uppercase tracking-widest">
-                            Percentual Aplicado: {(res.perc * 100).toFixed(1)}%
-                          </p>
-                        </div>
-
-                        <div className="pt-6 border-t border-white/5">
-                          <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
-                            Bônus Extras (Manual)
-                          </p>
-                          {res.extras.map((ex, i) => (
-                            <div key={i} className="flex gap-2 mb-2">
-                              <input
-                                type="text"
-                                value={ex.label}
-                                onChange={(e) => updateExtraValue(selectedPerson, i, "label", e.target.value)}
-                                className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white"
-                              />
-                              <input
-                                type="number"
-                                value={ex.val || ""}
-                                onChange={(e) => updateExtraValue(selectedPerson, i, "val", e.target.value)}
-                                className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          onClick={() => closeVariable(name, "Closer", res.total, {
-                              achievement: res.atingimentoIndiv,
-                              target: res.metaIndiv,
-                              realized: res.fatIndiv
-                          })}
-                          className="w-full mt-10 bg-[#00C9C8] text-[#010B1D] font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-cyan-500/20 uppercase tracking-widest text-[11px]"
-                        >
-                          <Lock size={18} /> Fechar Variável
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="lg:col-span-2 space-y-6">
-                      <div className="bg-white/5 rounded-[2.5rem] border border-white/5 overflow-hidden shadow-sm">
-                        <table className="w-full text-left text-sm font-semibold">
-                          <thead className="bg-[#0A2230] border-b border-white/5 font-black text-slate-500 uppercase text-[10px]">
-                            <tr>
-                              <th className="px-8 py-5">Negócio Ganho</th>
-                              <th className="px-8 py-5 text-right">Valor Bruto</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/5 font-medium">
-                            {res.myVendas.map((v, i) => (
-                              <tr key={i} className="hover:bg-white/5 transition-colors">
-                                <td className="px-8 py-5 text-white">{v.name}</td>
-                                <td className="px-8 py-5 text-right font-black text-[#00C9C8]">
-                                  {formatCurrency(v.value)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-          </div>
-        )}
-
-        {activeTab === "GESTOR" && (
-          <div className="space-y-10 animate-in fade-in duration-500">
-            {(() => {
-              const res = calculateManagement("gestor");
-              const name = goals.customNames["gestor"];
-              return (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                  <div className="lg:col-span-4 space-y-8">
-                    <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl border border-white/10 relative overflow-hidden">
-                      <p className="text-blue-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
-                        Demonstrativo Gestão
-                      </p>
-
-                      <div className="flex items-center gap-2 mb-10 group">
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) =>
-                            setGoals({ ...goals, customNames: { ...goals.customNames, gestor: e.target.value } })
-                          }
-                          className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
-                        />
-                        <Edit2 size={16} className="text-white/20 group-hover:text-[#00D4C5]" />
-                      </div>
-
-                      <div className="space-y-4">
-                        <SummaryItem label="Variável Total" value={res.total} highlight />
-                        <SummaryItem label="1. Bônus Fatur. Equipe" value={res.v1} />
-                        <SummaryItem label="2. Bônus Volume Reuniões" value={res.v2} />
-                        <SummaryItem label="3. Bônus Eficiência Equipe" value={res.v3} />
-                        <SummaryItem label="4. Comissão Faturamento" value={res.v4} />
-                        <SummaryItem label="5. Override Qualificação" value={res.v5} />
-
-                        <div className="pt-6 border-t border-white/5">
-                          <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
-                            Bônus Extras (Manual)
-                          </p>
-                          {res.extras.map((ex, i) => (
-                            <div key={i} className="flex gap-2 mb-2">
-                              <input
-                                type="text"
-                                value={ex.label}
-                                onChange={(e) => updateExtraValue(name, i, "label", e.target.value)}
-                                className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white"
-                              />
-                              <input
-                                type="number"
-                                value={ex.val || ""}
-                                onChange={(e) => updateExtraValue(name, i, "val", e.target.value)}
-                                className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          onClick={() => closeVariable(name, "Gestor", res.total)}
-                          className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]"
-                        >
-                          <Lock size={18} /> Fechar Variável
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="lg:col-span-8 bg-white/5 p-10 rounded-[3rem] border border-white/5">
-                    <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-[#00D4C5] border-b border-white/5 pb-4">
-                      Base Qualificação Paga: {formatCurrency(res.totalQualifPaga)}
-                    </h3>
-                    <p className="text-sm text-slate-400">
-                      O colaborador recebe um percentual sobre o total pago em bônus de qualificação (score) para todo o
-                      time comercial.
-                    </p>
-                  </div>
+          <div className="animate-fadeIn space-y-8">
+            <div className="flex justify-between items-center bg-[#0A2230] p-6 rounded-[2rem] border border-white/5">
+              <div className="flex items-center gap-4">
+                <div className="bg-[#00D4C5]/10 p-3 rounded-xl text-[#00D4C5]">
+                  <UserCheck size={24} />
                 </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* PRODUCT */}
-        {activeTab === "PRODUCT" && (
-          <div className="space-y-10 animate-in fade-in duration-500">
-            {(() => {
-              const res = calculateManagement("produto");
-              const name = goals.customNames["produto"];
-              return (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                  <div className="lg:col-span-4 space-y-8">
-                    <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl border border-white/10 relative overflow-hidden">
-                      <p className="text-violet-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
-                        Demonstrativo Produto
-                      </p>
-
-                      <div className="flex items-center gap-2 mb-10 group">
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) =>
-                            setGoals({ ...goals, customNames: { ...goals.customNames, produto: e.target.value } })
-                          }
-                          className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
-                        />
-                        <Edit2 size={16} className="text-white/20 group-hover:text-violet-400" />
-                      </div>
-
-                      <div className="space-y-4">
-                        <SummaryItem label="Variável Total" value={res.total} highlight />
-                        <SummaryItem label="1. Bônus Fatur. Equipe" value={res.v1} />
-                        <SummaryItem label="2. Bônus Volume Reuniões" value={res.v2} />
-                        <SummaryItem label="3. Bônus Eficiência Equipe" value={res.v3} />
-                        <SummaryItem label="4. Comissão Faturamento" value={res.v4} />
-                        <SummaryItem label="5. Override Qualificação" value={res.v5} />
-
-                        <div className="pt-6 border-t border-white/5">
-                          <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
-                            Bônus Extras (Manual)
-                          </p>
-                          {res.extras.map((ex, i) => (
-                            <div key={i} className="flex gap-2 mb-2">
-                              <input
-                                type="text"
-                                value={ex.label}
-                                onChange={(e) => updateExtraValue(name, i, "label", e.target.value)}
-                                className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white"
-                              />
-                              <input
-                                type="number"
-                                value={ex.val || ""}
-                                onChange={(e) => updateExtraValue(name, i, "val", e.target.value)}
-                                className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          onClick={() => closeVariable(name, "Produto", res.total)}
-                          className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]"
-                        >
-                          <Lock size={18} /> Fechar Variável
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="lg:col-span-8 bg-white/5 p-10 rounded-[3rem] border border-white/5">
-                    <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-[#00D4C5] border-b border-white/5 pb-4">
-                      Base Qualificação Paga: {formatCurrency(res.totalQualifPaga)}
-                    </h3>
-                    <p className="text-sm text-slate-400">
-                      O colaborador recebe um percentual sobre o total pago em bônus de qualificação (score) para todo o
-                      time comercial.
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* LDR - AGORA SEPARADO CORRETAMENTE E COMPLETAMENTE VISÍVEL */}
-        {activeTab === "LDR" && (
-          <div className="space-y-10 animate-in fade-in duration-500">
-            {(() => {
-              const res = calculateLDR();
-              const name = goals.customNames["ldr"];
-              return (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                  <div className="lg:col-span-4 space-y-8">
-                    <div className="bg-[#0A2230] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden ring-1 ring-white/10 border border-[#00D4C5]/20">
-                      <p className="text-amber-400 font-black text-[10px] uppercase tracking-[0.3em] mb-4">
-                        Demonstrativo LDR
-                      </p>
-
-                      <div className="flex items-center gap-2 mb-10 group">
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) =>
-                            setGoals({ ...goals, customNames: { ...goals.customNames, ldr: e.target.value } })
-                          }
-                          className="text-3xl font-black bg-transparent border-none p-0 focus:ring-0 text-white w-full tracking-tight"
-                        />
-                        <Edit2 size={16} className="text-white/20 group-hover:text-amber-400" />
-                      </div>
-
-                      <div className="space-y-6">
-                        <SummaryItem label="Variável Total LDR" value={res.total} highlight />
-                        <SummaryItem label="1. Meta Reuniões" value={res.v1} />
-                        <SummaryItem label="2. Bônus Contatos" value={res.v2} />
-                        <SummaryItem label="3. Cards Qualificados" value={res.v3} />
-                        <SummaryItem label="4. Bônus Equipe" value={res.v4} />
-
-                        <div className="pt-6 border-t border-white/5">
-                          <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest">
-                            Bônus Extras (Manual)
-                          </p>
-                          {res.extras.map((ex, i) => (
-                            <div key={i} className="flex gap-2 mb-2">
-                              <input
-                                type="text"
-                                value={ex.label}
-                                onChange={(e) => updateExtraValue(name, i, "label", e.target.value)}
-                                className="w-full bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-white"
-                              />
-                              <input
-                                type="number"
-                                value={ex.val || ""}
-                                onChange={(e) => updateExtraValue(name, i, "val", e.target.value)}
-                                className="w-24 bg-white/5 border-none rounded-xl px-4 py-2 text-[10px] font-black text-[#00D4C5] text-right"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          onClick={() => closeVariable(name, "LDR", res.total)}
-                          className="w-full mt-10 bg-[#00D4C5] text-[#010B1D] font-black py-5 rounded-[1.5rem] active:scale-95 shadow-xl uppercase tracking-widest text-[11px]"
-                        >
-                          <Lock size={18} /> Fechar Variável
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="lg:col-span-8 space-y-8">
-                    <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-2xl">
-                      <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-10 flex items-center gap-3 text-[#00D4C5] border-b border-white/5 pb-6">
-                        <UserCheck size={20} /> Gestão de Dados LDR
-                      </h3>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                        <div className="space-y-6">
-                          <div>
-                            <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
-                              Contatos Garimpados
-                            </label>
-                            <div className="flex gap-4">
-                              <input
-                                type="number"
-                                placeholder="Real"
-                                value={goals.ldrStats.garimpados}
-                                onChange={(e) =>
-                                  setGoals({
-                                    ...goals,
-                                    ldrStats: { ...goals.ldrStats, garimpados: parseNum(e.target.value) },
-                                  })
-                                }
-                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none"
-                              />
-                              <input
-                                type="number"
-                                placeholder="Meta"
-                                value={goals.ldrStats.garimpadosMeta}
-                                onChange={(e) =>
-                                  setGoals({
-                                    ...goals,
-                                    ldrStats: { ...goals.ldrStats, garimpadosMeta: parseNum(e.target.value) },
-                                  })
-                                }
-                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
-                            <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
-                            <span className="text-2xl font-black text-cyan-400">
-                              {res.atingimentoGarimpados.toFixed(1)}%
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-6">
-                          <div>
-                            <label className="block text-[11px] font-black text-slate-500 uppercase mb-4 tracking-widest">
-                              Cards Qualificados
-                            </label>
-                            <div className="flex gap-4">
-                              <input
-                                type="number"
-                                placeholder="Real"
-                                value={goals.ldrStats.cards}
-                                onChange={(e) =>
-                                  setGoals({
-                                    ...goals,
-                                    ldrStats: { ...goals.ldrStats, cards: parseNum(e.target.value) },
-                                  })
-                                }
-                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-[#00C9C8] ring-1 ring-white/10 outline-none"
-                              />
-                              <input
-                                type="number"
-                                placeholder="Meta"
-                                value={goals.ldrStats.cardsMeta}
-                                onChange={(e) =>
-                                  setGoals({
-                                    ...goals,
-                                    ldrStats: { ...goals.ldrStats, cardsMeta: parseNum(e.target.value) },
-                                  })
-                                }
-                                className="w-full bg-white/5 border-none rounded-2xl px-6 py-4 font-black text-slate-500 ring-1 ring-white/10 outline-none"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="p-6 bg-white/5 rounded-2xl flex justify-between items-center">
-                            <span className="text-[11px] font-black uppercase text-slate-400">Atingimento</span>
-                            <span className="text-2xl font-black text-indigo-400">
-                              {res.atingimentoCards.toFixed(1)}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* FECHAMENTO (MODIFICADO: Botão abaixo da tabela) */}
-        {activeTab === "FECHAMENTO" && (
-          <div className="space-y-10 animate-in fade-in">
-            {/* Tabela de Fechamento (Ocupa largura total) */}
-            <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden">
-                <div className="flex justify-between items-center mb-10 border-b border-white/5 pb-8">
-                    <h3 className="text-lg font-black text-white tracking-tight flex items-center gap-4">
-                    <ClipboardList size={24} className="text-[#00C9C8]" /> Resumo do Fechamento: {reportTitle}
-                    </h3>
-                    <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                        Total Variável Acumulado
-                    </p>
-                    <p className="text-4xl font-black text-[#00C9C8] tracking-tighter shadow-cyan-500/10">
-                        {formatCurrency(goals.closedVariables.reduce((acc, v) => acc + v.value, 0))}
-                    </p>
-                    </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm font-semibold">
-                    <thead className="bg-[#0B132B] font-black text-[10px] text-slate-500 uppercase tracking-[0.2em]">
-                        <tr>
-                        <th className="px-8 py-5">Colaborador</th>
-                        <th className="px-8 py-5">Cargo</th>
-                        <th className="px-8 py-5 text-right">Meta</th>
-                        <th className="px-8 py-5 text-right">Realizado</th>
-                        <th className="px-8 py-5 text-center">Ating. %</th>
-                        <th className="px-8 py-5 text-right">Variável</th>
-                        <th className="px-8 py-5 text-center">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                        {goals.closedVariables.map((v) => (
-                        <tr key={v.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-8 py-5 text-white font-bold">{v.name}</td>
-                            <td className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">
-                            {v.role}
-                            </td>
-                            <td className="px-8 py-5 text-right text-slate-400">
-                                {v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-"}
-                            </td>
-                            <td className="px-8 py-5 text-right text-white font-bold">
-                                {v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-"}
-                            </td>
-                            <td className="px-8 py-5 text-center text-[#00C9C8] font-black">
-                                {v.achievement ? `${v.achievement.toFixed(1)}%` : "-"}
-                            </td>
-                            <td className="px-8 py-5 text-right font-black text-emerald-400">
-                            {formatCurrency(v.value)}
-                            </td>
-                            <td className="px-8 py-5 text-center">
-                            <button
-                                onClick={() => removeClosed(v.id)}
-                                className="p-2.5 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all"
-                            >
-                                <Trash2 size={16} />
-                            </button>
-                            </td>
-                        </tr>
-                        ))}
-
-                        {goals.closedVariables.length === 0 && (
-                        <tr>
-                            <td
-                            colSpan="7"
-                            className="py-24 text-center text-slate-500 font-black italic tracking-widest text-[10px]"
-                            >
-                            Aguardando fechamento de variáveis para consolidar...
-                            </td>
-                        </tr>
-                        )}
-                    </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* Seção de Exportação (Centralizada abaixo da tabela) */}
-            <div className="bg-[#0B132B] p-10 rounded-[3rem] shadow-2xl text-center ring-1 ring-white/10 flex flex-col items-center justify-center">
-                <Award
-                className="mx-auto text-[#00C9C8] mb-6 drop-shadow-[0_0_10px_rgba(0,212,197,0.5)]"
-                size={48}
-                />
-                <h4 className="text-[11px] font-black uppercase text-slate-500 mb-3 tracking-[0.2em]">
-                Status do Mês
-                </h4>
-                <p className="text-2xl font-black tracking-tight mb-8">Consolidar Período</p>
-
-                <div className="flex gap-4">
-                  <button 
-                  onClick={consolidateMonthToHistory}
-                  className="w-64 bg-white/10 py-5 rounded-2xl font-black text-white text-sm hover:bg-white/20 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3 border border-white/5"
-                  >
-                  <History size={20} /> Salvar no Histórico
-                  </button>
-
-                  <button 
-                  onClick={exportReport}
-                  className="w-64 bg-[#00C9C8] py-5 rounded-2xl font-black text-[#010B1D] text-sm hover:bg-cyan-400 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3"
-                  >
-                  <Download size={20} /> Exportar Excel
-                  </button>
-                </div>
-            </div>
-          </div>
-        )}
-
-        {/* --- NOVA ABA: HISTÓRICO --- */}
-        {activeTab === "HISTÓRICO" && (
-          <div className="space-y-10 animate-in fade-in">
-             <div className="bg-[#0B132B] p-8 rounded-[2.5rem] border border-white/5 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3"><History /> Linha do Tempo</h2>
-                  <p className="text-sm text-slate-400 font-medium">Evolução Mensal e Histórico de Pagamentos</p>
+                  <h2 className="text-xl font-black text-white">SDR Dashboard</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Selecione o colaborador abaixo</p>
                 </div>
-                <div className="flex items-center gap-4">
-                   {/* SELETOR DE PERÍODO (NOVO) */}
-                   <div className="flex items-center gap-2 bg-[#021017] p-1 rounded-xl border border-white/10">
-                      <Filter size={16} className="ml-2 text-slate-500" />
-                      <select 
-                          value={historyFilter}
-                          onChange={(e) => setHistoryFilter(e.target.value)}
-                          className="bg-transparent text-white p-2 font-bold outline-none text-sm"
-                       >
-                          <option value="ALL">Todo o Período</option>
-                          <option value="LAST_3">Últimos 3 Meses</option>
-                          <option value="LAST_6">Últimos 6 Meses</option>
-                          <optgroup label="Por Ano">
-                            {availableYears.map(y => (
-                              <option key={y} value={y}>{y}</option>
-                            ))}
-                          </optgroup>
-                       </select>
-                   </div>
-
-                   {/* SELETOR DE PESSOA */}
-                   <select 
-                      value={selectedHistoryPerson}
-                      onChange={(e) => setSelectedHistoryPerson(e.target.value)}
-                      className="bg-[#021017] text-white p-3 rounded-xl border border-white/10 font-bold outline-none"
-                   >
-                      <option value="GLOBAL">Visão Global da Empresa</option>
-                      {allPeopleInHistory.filter(n => n !== "GLOBAL").map(name => (
-                         <option key={name} value={name}>{name}</option>
-                      ))}
-                   </select>
-                </div>
-             </div>
-
-             {sortedMonths.length === 0 ? (
-               <div className="text-center py-20 bg-white/5 rounded-[3rem] border border-dashed border-white/10">
-                  <History size={48} className="mx-auto text-slate-600 mb-4" />
-                  <p className="text-slate-500 font-bold">Nenhum histórico consolidado ainda. Vá em "Fechamento" e consolide um mês.</p>
-               </div>
-             ) : (
-               <div className="space-y-8">
-                  {selectedHistoryPerson !== "GLOBAL" && (
-                    // VISÃO INDIVIDUAL - STATCARDS PRIMEIRO (TOPO)
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                       <StatCard 
-                          label="Total Recebido" 
-                          icon={<DollarSign size={20} />}
-                          value={formatCurrency(filteredMonths.reduce((acc, m) => {
-                             const person = historyDB[m].individuals.find(p => p.name === selectedHistoryPerson);
-                             return acc + (person ? person.variableReceived : 0);
-                          }, 0))}
-                          sub="No período selecionado"
-                       />
-                       <StatCard 
-                          label="Média Atingimento" 
-                          icon={<Target size={20} />}
-                          value={`${(filteredMonths.reduce((acc, m) => {
-                             const person = historyDB[m].individuals.find(p => p.name === selectedHistoryPerson);
-                             return acc + (person ? person.achievement : 0);
-                          }, 0) / (filteredMonths.filter(m => historyDB[m].individuals.some(p => p.name === selectedHistoryPerson)).length || 1)).toFixed(1)}%`}
-                          sub="Performance média no período"
-                       />
-                       <StatCard 
-                          label="Meses Ativos" 
-                          icon={<Calendar size={20} />}
-                          value={filteredMonths.filter(m => historyDB[m].individuals.some(p => p.name === selectedHistoryPerson)).length}
-                          sub="Participações no período"
-                       />
-                    </div>
-                  )}
-
-                  {/* GRÁFICO DE EVOLUÇÃO - AGORA ABAIXO DOS STATCARDS */}
-                  <div className="bg-[#0B132B] p-10 rounded-[3rem] border border-white/5 shadow-xl">
-                     <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-8 flex items-center gap-3 text-white border-b border-white/5 pb-4">
-                        <BarChart3 size={20} className="text-[#00D4C5]" /> Gráfico de Desempenho
-                     </h3>
-                     <SimpleLineChart data={chartData.data} lines={chartData.lines} />
-                  </div>
-
-                  {selectedHistoryPerson === "GLOBAL" ? (
-                    // VISÃO GLOBAL - TABELA NO FINAL
-                    <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 overflow-hidden">
-                       <table className="w-full text-left text-sm font-semibold">
-                          <thead className="bg-[#0B132B] font-black text-[10px] text-slate-500 uppercase tracking-[0.2em]">
-                             <tr>
-                                <th className="px-8 py-5">Mês Referência</th>
-                                <th className="px-8 py-5 text-right">Meta Equipe</th>
-                                <th className="px-8 py-5 text-right">Realizado</th>
-                                <th className="px-8 py-5 text-center">Atingimento</th>
-                                <th className="px-8 py-5 text-right">Total Variável Pago</th>
-                             </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/5">
-                             {filteredMonths.map(month => {
-                                const data = historyDB[month].teamStats;
-                                return (
-                                  <tr key={month} className="hover:bg-white/5 transition-colors">
-                                     <td className="px-8 py-5 text-white font-bold">{historyDB[month].title}</td>
-                                     <td className="px-8 py-5 text-right text-slate-400">{formatCurrency(data.revenueGoal)}</td>
-                                     <td className="px-8 py-5 text-right text-white">{formatCurrency(data.revenueReal)}</td>
-                                     <td className="px-8 py-5 text-center">
-                                        <span className={`px-3 py-1 rounded-full text-xs font-black ${data.achievement >= 100 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                                           {data.achievement.toFixed(1)}%
-                                        </span>
-                                     </td>
-                                     <td className="px-8 py-5 text-right text-[#00C9C8] font-black">{formatCurrency(data.totalVariablePaid)}</td>
-                                  </tr>
-                                )
-                             })}
-                          </tbody>
-                       </table>
-                    </div>
-                  ) : (
-                    // VISÃO INDIVIDUAL - TABELA/BARS NO FINAL
-                    <div className="bg-white/5 p-10 rounded-[3rem] border border-white/5 overflow-hidden">
-                       <h3 className="font-black text-xs uppercase tracking-[0.2em] mb-8 flex items-center gap-3 text-white border-b border-white/5 pb-4">
-                          <BarChart3 size={20} className="text-[#00D4C5]" /> Detalhes Mensais
-                       </h3>
-                       <div className="space-y-6">
-                          {filteredMonths.map(month => {
-                             const person = historyDB[month].individuals.find(p => p.name === selectedHistoryPerson);
-                             if (!person) return null;
-                             
-                             return (
-                                <div key={month} className="bg-[#0B132B] p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row items-center gap-6">
-                                   <div className="w-32 shrink-0">
-                                      <p className="text-[10px] font-black uppercase text-slate-500">{historyDB[month].title}</p>
-                                      <p className="text-sm font-bold text-white">{person.role}</p>
-                                   </div>
-                                   
-                                   <div className="flex-1 w-full space-y-2">
-                                      <div className="flex justify-between text-xs font-bold mb-1">
-                                         <span className="text-slate-400">Meta: {person.role === 'Closer' ? formatCurrency(person.target) : person.target}</span>
-                                         <span className={`${person.achievement >= 100 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                            {person.realized} ({person.achievement.toFixed(1)}%)
-                                         </span>
-                                      </div>
-                                      <div className="h-3 bg-white/5 rounded-full overflow-hidden w-full">
-                                         <div 
-                                            className={`h-full rounded-full ${person.achievement >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
-                                            style={{ width: `${Math.min(person.achievement, 100)}%` }}
-                                         ></div>
-                                      </div>
-                                   </div>
-
-                                   <div className="w-32 shrink-0 text-right">
-                                      <p className="text-[10px] font-black uppercase text-slate-500">Variável</p>
-                                      <p className="text-xl font-black text-[#00C9C8]">{formatCurrency(person.variableReceived)}</p>
-                                   </div>
-                                </div>
-                             )
-                          })}
-                       </div>
-                    </div>
-                  )}
-               </div>
-             )}
-          </div>
-        )}
-
-        {/* REGRAS */}
-        {activeTab === "REGRAS" && (
-          <div className="space-y-10 animate-in fade-in pb-12 overflow-y-auto max-h-[85vh]">
-            <div className="bg-[#0B132B] text-white p-10 rounded-[3rem] shadow-xl flex items-center gap-8 ring-1 ring-white/10">
-              <div className="bg-[#00C9C8] p-5 rounded-3xl shadow-2xl text-[#010B1D]">
-                <Settings2 size={40} />
               </div>
-              <div>
-                <h2 className="text-3xl font-black tracking-tight">Configurações Branddi</h2>
-                <p className="text-[#00D4C5] text-sm font-medium tracking-wide uppercase">
-                  Configuração financeira e triggers operacionais.
-                </p>
+
+              <div className="relative">
+                <select
+                  value={selectedPerson}
+                  onChange={(e) => setSelectedPerson(e.target.value)}
+                  className="bg-[#0B132B] text-white font-bold text-sm py-3 px-6 pr-10 rounded-xl border border-white/10 outline-none appearance-none cursor-pointer focus:border-[#00D4C5] transition-colors min-w-[250px]"
+                >
+                  <option value="">Selecione um SDR...</option>
+                  {dataStore.people.sdrs.map(sdr => (
+                    <option key={sdr} value={sdr}>{sdr}</option>
+                  ))}
+                </select>
+                <Award size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#00D4C5] pointer-events-none" />
               </div>
             </div>
 
-            <section className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-sm space-y-10">
-              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-[#00C9C8] border-l-8 border-[#00C9C8] pl-6">
-                Ajuste de Equipe (Universal)
-              </h3>
+            {selectedPerson ? (() => {
+              const data = calculateSDR(selectedPerson);
+              return (
+                <div className="bg-[#0A2230] p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden animate-fadeIn">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-[#00D4C5]/5 rounded-full blur-3xl -mr-20 -mt-20"></div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {rules.bonusUniversal.map((b, i) => (
-                  <div
-                    key={i}
-                    className="flex flex-col gap-4 p-6 bg-[#0B132B] rounded-3xl border border-white/5 shadow-inner"
-                  >
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-                      Se Equipe atingir ≥ {b.min}%
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <span className="font-black text-slate-500 text-sm">R$</span>
+                  <div className="flex justify-between items-start mb-10 relative">
+                    <div>
+                      <h2 className="text-3xl font-black text-white mb-1">{selectedPerson}</h2>
+                      <p className="text-[#00D4C5] font-bold text-sm tracking-widest uppercase">SDR Account</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Variável</p>
+                      <p className="text-4xl font-black text-[#00D4C5]">{formatCurrency(data.total)}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-8">
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Meta Individual</p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          value={goals.individualSdrGoals[selectedPerson] || goals.sdrMetaDefault}
+                          onChange={e => setGoals(prev => ({
+                            ...prev,
+                            individualSdrGoals: { ...prev.individualSdrGoals, [selectedPerson]: parseNum(e.target.value) }
+                          }))}
+                          className="bg-transparent text-xl font-black text-white outline-none w-20"
+                        />
+                        <span className="text-xs font-bold text-slate-500">reuniões</span>
+                      </div>
+                    </div>
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Realizado</p>
+                      <p className="text-xl font-black text-white">{data.totalReunioesRealizadas}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 bg-[#0B132B]/50 p-6 rounded-3xl">
+                    <SummaryItem label="Bônus Meta (Reuniões)" value={data.v1} highlight />
+                    <SummaryItem label="Bônus Universal (Time)" value={data.v2} />
+                    <SummaryItem label="Qualificação (Score)" value={data.v3} />
+                    <SummaryItem label="Bônus Venda Iniciada" value={data.v4} />
+                    {data.extras.map((ex, i) => (
+                      <div key={i} className="flex justify-between items-center py-2 border-b border-white/5">
+                        <input
+                          value={ex.label}
+                          onChange={(e) => updateExtraValue(selectedPerson, i, "label", e.target.value)}
+                          className="bg-transparent text-sm text-slate-400 font-medium outline-none w-32 focus:text-[#00D4C5]"
+                        />
+                        <input
+                          type="number"
+                          value={ex.val}
+                          onChange={(e) => updateExtraValue(selectedPerson, i, "val", e.target.value)}
+                          className="bg-transparent text-right font-bold text-white outline-none w-24 focus:text-[#00D4C5]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* DETALHES RESTAURADOS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-[#00D4C5] mb-4 flex items-center gap-2">
+                        <ClipboardList size={14} /> Detalhe de Reuniões
+                      </h4>
+                      <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                        {data.meetingsDetails.length === 0 && <p className="text-xs text-slate-500 italic">Nenhuma reunião registrada.</p>}
+                        {data.meetingsDetails.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
+                            <span className="text-slate-300 truncate max-w-[150px]" title={item.name}>{item.name}</span>
+                            <div className="text-right">
+                              <div className="font-bold text-white">{item.score} pts</div>
+                              <div className="text-[10px] text-[#00D4C5]">{formatCurrency(item.bonus)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-emerald-400 mb-4 flex items-center gap-2">
+                        <TrendingUp size={14} /> Vendas Iniciadas
+                      </h4>
+                      <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                        {data.salesDetails.length === 0 && <p className="text-xs text-slate-500 italic">Nenhuma venda iniciada.</p>}
+                        {data.salesDetails.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
+                            <span className="text-slate-300 truncate max-w-[150px]" title={item.name}>{item.name}</span>
+                            <div className="text-right">
+                              <div className="font-bold text-white">{formatCurrency(item.revenue)}</div>
+                              <div className="text-[10px] text-emerald-400">{formatCurrency(item.bonus)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 flex justify-end">
+                    <button
+                      onClick={() => closeVariable(selectedPerson, "SDR", data.total, { target: data.metaIndiv, realized: data.totalReunioesRealizadas, achievement: data.atingimentoMeta })}
+                      className="bg-[#00D4C5] hover:bg-[#00c0b2] text-[#021017] px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg hover:shadow-[#00D4C5]/20 flex items-center gap-2"
+                    >
+                      <Lock size={16} />
+                      Fechar Variável
+                    </button>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="h-64 flex flex-col items-center justify-center text-slate-500 gap-4 bg-[#0A2230]/40 rounded-[2.5rem] border border-white/5 border-dashed">
+                <UserCheck size={48} strokeWidth={1} />
+                <p className="font-medium">Selecione um SDR acima para visualizar os dados</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- CLOSER TAB --- */}
+        {activeTab === "CLOSER" && (
+          <div className="animate-fadeIn space-y-8">
+            <div className="flex justify-between items-center bg-[#0A2230] p-6 rounded-[2rem] border border-white/5">
+              <div className="flex items-center gap-4">
+                <div className="bg-[#00D4C5]/10 p-3 rounded-xl text-[#00D4C5]">
+                  <UserCheck size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white">Closer Dashboard</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Selecione o executivo abaixo</p>
+                </div>
+              </div>
+
+              <div className="relative">
+                <select
+                  value={selectedPerson}
+                  onChange={(e) => setSelectedPerson(e.target.value)}
+                  className="bg-[#0B132B] text-white font-bold text-sm py-3 px-6 pr-10 rounded-xl border border-white/10 outline-none appearance-none cursor-pointer focus:border-[#00D4C5] transition-colors min-w-[250px]"
+                >
+                  <option value="">Selecione um Closer...</option>
+                  {dataStore.people.closers.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <Award size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#00D4C5] pointer-events-none" />
+              </div>
+            </div>
+
+            {selectedPerson ? (() => {
+              const data = calculateCloser(selectedPerson);
+              return (
+                <div className="bg-[#0A2230] p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden animate-fadeIn">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-[#00D4C5]/5 rounded-full blur-3xl -mr-20 -mt-20"></div>
+
+                  <div className="flex justify-between items-start mb-10 relative">
+                    <div>
+                      <h2 className="text-3xl font-black text-white mb-1">{selectedPerson}</h2>
+                      <p className="text-[#00D4C5] font-bold text-sm tracking-widest uppercase">Closer / Executivo</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Variável</p>
+                      <p className="text-4xl font-black text-[#00D4C5]">{formatCurrency(data.total)}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-4 mb-8">
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <label className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2 block">Meta Individual</label>
                       <input
                         type="number"
-                        value={b.val}
-                        onChange={(e) => {
-                          const nr = { ...rules };
-                          nr.bonusUniversal[i].val = parseNum(e.target.value);
-                          setRules(nr);
-                        }}
-                        className="w-full bg-white/5 border-none rounded-xl px-4 py-3 font-black text-[#00C9C8] shadow-sm focus:ring-1 ring-cyan-500 outline-none"
+                        value={goals.individualCloserGoals[selectedPerson] || goals.closerMetaBase}
+                        onChange={e => setGoals(prev => ({
+                          ...prev,
+                          individualCloserGoals: { ...prev.individualCloserGoals, [selectedPerson]: parseNum(e.target.value) }
+                        }))}
+                        className="bg-transparent text-lg font-black text-white outline-none w-full"
                       />
                     </div>
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Realizado</p>
+                      <p className="text-lg font-black text-white">{formatCurrency(data.fatIndiv)}</p>
+                    </div>
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Atingimento</p>
+                      <p className={`text-lg font-black ${data.atingimentoIndiv >= 100 ? "text-[#00D4C5]" : "text-amber-400"}`}>{data.atingimentoIndiv.toFixed(1)}%</p>
+                    </div>
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Comissão (%)</p>
+                      <p className="text-lg font-black text-[#00D4C5]">{(data.perc * 100).toFixed(1)}%</p>
+                    </div>
                   </div>
-                ))}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2 bg-[#0B132B]/50 p-6 rounded-3xl h-full">
+                      <SummaryItem label="Comissão Faturamento" value={data.v1} highlight />
+                      <SummaryItem label="Bônus Universal" value={data.v2} />
+                      {data.extras.map((ex, i) => (
+                        <div key={i} className="flex justify-between items-center py-2 border-b border-white/5">
+                          <input
+                            value={ex.label}
+                            onChange={(e) => updateExtraValue(selectedPerson, i, "label", e.target.value)}
+                            className="bg-transparent text-sm text-slate-400 font-medium outline-none w-32 focus:text-[#00D4C5]"
+                          />
+                          <div className="flex items-center gap-1">
+                            <span className="text-slate-500 font-bold text-sm">R$</span>
+                            <input
+                              type="number"
+                              value={ex.val}
+                              onChange={(e) => updateExtraValue(selectedPerson, i, "val", e.target.value)}
+                              className="bg-transparent text-right font-bold text-white outline-none w-20 focus:text-[#00D4C5]"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5 h-full flex flex-col">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-amber-400 mb-4 flex items-center gap-2">
+                        <BriefcaseIcon size={14} /> Detalhe de Vendas
+                      </h4>
+                      <div className="space-y-2 overflow-y-auto pr-2 custom-scrollbar flex-1">
+                        {data.myVendas.length === 0 && <p className="text-xs text-slate-500 italic">Nenhuma venda registrada.</p>}
+                        {data.myVendas.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
+                            <span className="text-slate-300 truncate max-w-[200px]" title={item.name}>{item.name || "Venda sem nome"}</span>
+                            <div className="font-bold text-white">{formatCurrency(item.value)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+
+                  <div className="mt-8 flex justify-end">
+                    <button
+                      onClick={() => closeVariable(selectedPerson, "Closer", data.total, { target: data.metaIndiv, realized: data.fatIndiv, achievement: data.atingimentoIndiv })}
+                      className="bg-[#00D4C5] hover:bg-[#00c0b2] text-[#021017] px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg hover:shadow-[#00D4C5]/20 flex items-center gap-2"
+                    >
+                      <Lock size={16} /> Fechar Variável
+                    </button>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="h-64 flex flex-col items-center justify-center text-slate-500 gap-4 bg-[#0A2230]/40 rounded-[2.5rem] border border-white/5 border-dashed">
+                <UserCheck size={48} strokeWidth={1} />
+                <p className="font-medium">Selecione um Closer acima para visualizar os dados</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- REGRAS (BUG FIX) --- */}
+        {activeTab === "REGRAS" && (
+          <div className="animate-fadeIn max-w-5xl mx-auto space-y-12">
+            <div className="flex items-center gap-4 border-b border-white/5 pb-6">
+              <Settings2 size={32} className="text-[#00D4C5]" />
+              <h2 className="text-3xl font-black text-white">Configuração de Regras</h2>
+            </div>
+
+            {/* CORREÇÃO AQUI: State Mutation Avoidance */}
+            <section className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-sm space-y-10">
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-[#00D4C5] border-l-8 border-[#00D4C5] pl-6">
+                Bônus Universal (SDR + Closer)
+              </h3>
+              <div className="max-w-md">
+                <RuleColumn
+                  title="Tabela de Atingimento (%)"
+                  items={rules.bonusUniversal}
+                  onChange={(idx, field, val) => {
+                    setRules(prev => ({
+                      ...prev,
+                      bonusUniversal: prev.bonusUniversal.map((item, i) =>
+                        i === idx ? { ...item, [field]: parseNum(val) } : item
+                      )
+                    }));
+                  }}
+                  labelKey="min"
+                  labelSuffix="%"
+                />
               </div>
             </section>
 
@@ -1915,15 +917,20 @@ const App = () => {
               <h3 className="text-sm font-black uppercase tracking-[0.2em] text-emerald-400 border-l-8 border-emerald-400 pl-6">
                 Regras SDR
               </h3>
-
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <RuleColumn
                   title="T1: Meta Reuniões (%)"
                   items={rules.sdr.t1MetaReunioes}
                   onChange={(idx, field, val) => {
-                    const nr = { ...rules };
-                    nr.sdr.t1MetaReunioes[idx][field] = parseNum(val);
-                    setRules(nr);
+                    setRules(prev => ({
+                      ...prev,
+                      sdr: {
+                        ...prev.sdr,
+                        t1MetaReunioes: prev.sdr.t1MetaReunioes.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
                   }}
                   labelKey="perc"
                   labelSuffix="%"
@@ -1932,9 +939,15 @@ const App = () => {
                   title="T3: Qualificação (Score)"
                   items={rules.sdr.t3Qualificacao}
                   onChange={(idx, field, val) => {
-                    const nr = { ...rules };
-                    nr.sdr.t3Qualificacao[idx][field] = parseNum(val);
-                    setRules(nr);
+                    setRules(prev => ({
+                      ...prev,
+                      sdr: {
+                        ...prev.sdr,
+                        t3Qualificacao: prev.sdr.t3Qualificacao.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
                   }}
                   labelKey="min"
                   labelSuffix=" pts"
@@ -1943,98 +956,624 @@ const App = () => {
                   title="T4: Bônus Venda (R$)"
                   items={rules.sdr.t4VendasIniciadas}
                   onChange={(idx, field, val) => {
-                    const nr = { ...rules };
-                    nr.sdr.t4VendasIniciadas[idx][field] = parseNum(val);
-                    setRules(nr);
+                    setRules(prev => ({
+                      ...prev,
+                      sdr: {
+                        ...prev.sdr,
+                        t4VendasIniciadas: prev.sdr.t4VendasIniciadas.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
                   }}
                   labelKey="min"
-                  labelPrefix="R$ "
                 />
               </div>
             </section>
 
             <section className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-sm space-y-10">
-              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-indigo-400 border-l-8 border-indigo-400 pl-6">
-                Matriz Closer
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-[#00D4C5] border-l-8 border-[#00D4C5] pl-6">
+                Regras Closing Matrix (Closer)
               </h3>
-
-              <div className="space-y-6">
-                {Object.entries(rules.closer.matriz).map(([scenario, data]) => (
-                  <div key={scenario} className="p-6 bg-[#0B132B] rounded-3xl border border-white/5">
-                    <p className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest">
-                      Cenário: {scenario}
-                    </p>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {Object.entries(data.levels).map(([lvl, perc]) => (
-                        <div key={lvl} className="flex flex-col gap-1">
-                          <span className="text-[10px] font-bold text-slate-500 tracking-tighter">
-                            Indiv. ≥ {lvl}%
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={perc * 100}
-                              onChange={(e) => {
-                                const nr = { ...rules };
-                                nr.closer.matriz[scenario].levels[lvl] = parseNum(e.target.value) / 100;
-                                setRules(nr);
-                              }}
-                              className="w-full bg-white/5 border-none rounded-xl px-4 py-2 font-black text-[#00C9C8] outline-none"
-                            />
-                            <span className="text-[10px] font-bold text-slate-500">%</span>
-                          </div>
-                        </div>
+              <div className="overflow-x-auto bg-[#0B132B] p-6 rounded-3xl border border-white/10">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className="text-slate-400 uppercase tracking-widest border-b border-white/10">
+                      <th className="pb-4 font-black">Meta Atingida</th>
+                      {Object.keys(rules.closer.matriz.supermeta.levels).sort((a, b) => b - a).map(lvl => (
+                        <th key={lvl} className="pb-4 text-center font-black">{lvl}%</th>
                       ))}
-                    </div>
-                  </div>
-                ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {Object.keys(rules.closer.matriz).map(key => (
+                      <tr key={key} className="group hover:bg-white/5 transition-colors">
+                        <td className="py-4 font-bold text-white uppercase tracking-tighter">
+                          {key === 'supermeta' ? 'Supermeta (120%)' : key === 'meta' ? 'Meta (100%)' : 'Abaixo da Meta'}
+                        </td>
+                        {Object.keys(rules.closer.matriz[key].levels).sort((a, b) => b - a).map(lvl => (
+                          <td key={lvl} className="py-2 px-2">
+                            <div className="flex items-center gap-1 justify-center bg-[#0A2230] p-2 rounded-xl border border-white/5 group-hover:border-[#00D4C5]/30 transition-colors">
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={(rules.closer.matriz[key].levels[lvl] * 100).toFixed(1)}
+                                onChange={(e) => {
+                                  const val = parseNum(e.target.value) / 100;
+                                  setRules(prev => ({
+                                    ...prev,
+                                    closer: {
+                                      ...prev.closer,
+                                      matriz: {
+                                        ...prev.closer.matriz,
+                                        [key]: {
+                                          ...prev.closer.matriz[key],
+                                          levels: {
+                                            ...prev.closer.matriz[key].levels,
+                                            [lvl]: val
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }));
+                                }}
+                                className="bg-transparent text-center font-black text-[#00D4C5] outline-none w-12"
+                              />
+                              <span className="text-slate-500 font-bold">%</span>
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </section>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <section className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-sm">
-                <h3 className="text-sm font-black uppercase tracking-[0.2em] text-amber-400 border-l-8 border-amber-400 pl-6 mb-8">
-                  Gestão
-                </h3>
-
+            <section className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-sm space-y-10">
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-indigo-400 border-l-8 border-indigo-400 pl-6">
+                Regras Gestor
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <RuleColumn
-                  title="Bônus Fat. Time"
+                  title="Bônus Faturamento Time"
                   items={rules.gestor.bonusFaturamento}
                   onChange={(idx, field, val) => {
-                    const nr = { ...rules };
-                    nr.gestor.bonusFaturamento[idx][field] = parseNum(val);
-                    setRules(nr);
+                    setRules(prev => ({
+                      ...prev,
+                      gestor: {
+                        ...prev.gestor,
+                        bonusFaturamento: prev.gestor.bonusFaturamento.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
                   }}
                   labelKey="min"
                   labelSuffix="%"
                 />
-              </section>
-
-              <section className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-sm">
-                <h3 className="text-sm font-black uppercase tracking-[0.2em] text-violet-400 border-l-8 border-violet-400 pl-6 mb-8">
-                  Produto
-                </h3>
-
                 <RuleColumn
-                  title="Bônus Fat. Time"
+                  title="Bônus Volume Reuniões"
+                  items={rules.gestor.bonusVolumeReunioes}
+                  onChange={(idx, field, val) => {
+                    setRules(prev => ({
+                      ...prev,
+                      gestor: {
+                        ...prev.gestor,
+                        bonusVolumeReunioes: prev.gestor.bonusVolumeReunioes.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
+                  }}
+                  labelKey="min"
+                  labelSuffix="%"
+                />
+                <RuleColumn
+                  title="Bônus Meta Equipe (%)"
+                  items={rules.gestor.bonusMetaEquipe}
+                  onChange={(idx, field, val) => {
+                    setRules(prev => ({
+                      ...prev,
+                      gestor: {
+                        ...prev.gestor,
+                        bonusMetaEquipe: prev.gestor.bonusMetaEquipe.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
+                  }}
+                  labelKey="min"
+                  labelSuffix="%"
+                />
+              </div>
+            </section>
+
+            <section className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-sm space-y-10">
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-400 border-l-8 border-cyan-400 pl-6">
+                Regras Product Owner
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <RuleColumn
+                  title="Bônus Faturamento Time"
                   items={rules.produto.bonusFaturamento}
                   onChange={(idx, field, val) => {
-                    const nr = { ...rules };
-                    nr.produto.bonusFaturamento[idx][field] = parseNum(val);
-                    setRules(nr);
+                    setRules(prev => ({
+                      ...prev,
+                      produto: {
+                        ...prev.produto,
+                        bonusFaturamento: prev.produto.bonusFaturamento.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
                   }}
                   labelKey="min"
                   labelSuffix="%"
                 />
-              </section>
+                <RuleColumn
+                  title="Bônus Volume Reuniões"
+                  items={rules.produto.bonusVolumeReunioes}
+                  onChange={(idx, field, val) => {
+                    setRules(prev => ({
+                      ...prev,
+                      produto: {
+                        ...prev.produto,
+                        bonusVolumeReunioes: prev.produto.bonusVolumeReunioes.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
+                  }}
+                  labelKey="min"
+                  labelSuffix="%"
+                />
+                <RuleColumn
+                  title="Bônus Meta Equipe (%)"
+                  items={rules.produto.bonusMetaEquipe}
+                  onChange={(idx, field, val) => {
+                    setRules(prev => ({
+                      ...prev,
+                      produto: {
+                        ...prev.produto,
+                        bonusMetaEquipe: prev.produto.bonusMetaEquipe.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
+                  }}
+                  labelKey="min"
+                  labelSuffix="%"
+                />
+              </div>
+            </section>
+
+            <section className="bg-white/5 p-10 rounded-[3rem] border border-white/5 shadow-sm space-y-10">
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-amber-400 border-l-8 border-amber-400 pl-6">
+                Regras LDR
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <RuleColumn
+                  title="Bônus Reuniões Time"
+                  items={rules.ldr.bonusReunioes}
+                  onChange={(idx, field, val) => {
+                    setRules(prev => ({
+                      ...prev,
+                      ldr: {
+                        ...prev.ldr,
+                        bonusReunioes: prev.ldr.bonusReunioes.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
+                  }}
+                  labelKey="min"
+                  labelSuffix="%"
+                />
+                <RuleColumn
+                  title="Bônus Garimpados"
+                  items={rules.ldr.bonusGarimpados}
+                  onChange={(idx, field, val) => {
+                    setRules(prev => ({
+                      ...prev,
+                      ldr: {
+                        ...prev.ldr,
+                        bonusGarimpados: prev.ldr.bonusGarimpados.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
+                  }}
+                  labelKey="min"
+                  labelSuffix="%"
+                />
+                <RuleColumn
+                  title="Bônus Cards"
+                  items={rules.ldr.bonusCards}
+                  onChange={(idx, field, val) => {
+                    setRules(prev => ({
+                      ...prev,
+                      ldr: {
+                        ...prev.ldr,
+                        bonusCards: prev.ldr.bonusCards.map((item, i) =>
+                          i === idx ? { ...item, [field]: parseNum(val) } : item
+                        )
+                      }
+                    }));
+                  }}
+                  labelKey="min"
+                  labelSuffix="%"
+                />
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* --- GESTOR TAB --- */}
+        {activeTab === "GESTOR" && (() => {
+          const data = calculateManagement("gestor");
+          return (
+            <div className="animate-fadeIn space-y-8">
+              <div className="bg-[#0A2230] p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-[#00D4C5]/5 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                <div className="flex justify-between items-start mb-10 relative">
+                  <div>
+                    <h2 className="text-3xl font-black text-white mb-1"><input value={goals.customNames.gestor} onChange={(e) => setGoals(prev => ({ ...prev, customNames: { ...prev.customNames, gestor: e.target.value } }))} className="bg-transparent outline-none w-full placeholder-slate-600 focus:text-[#00D4C5] transition-colors" placeholder="Nome do Gestor" /></h2>
+                    <p className="text-[#00D4C5] font-bold text-sm tracking-widest uppercase">Gestão Comercial</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Variável</p>
+                    <p className="text-4xl font-black text-[#00D4C5]">{formatCurrency(data.total)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 bg-[#0B132B]/50 p-6 rounded-3xl mb-8">
+                  <SummaryItem label="Bônus Faturamento (Time)" value={data.v1} highlight />
+                  <SummaryItem label="Bônus Volume Reuniões" value={data.v2} />
+                  <SummaryItem label="Bônus Eficiência (Meta Equipe)" value={data.v3} />
+                  <SummaryItem label="Comissão Faturamento (1%)" value={data.v4} />
+                  <SummaryItem label="Override Qualificação (20%)" value={data.v5} />
+                  {data.extras.map((ex, i) => (
+                    <div key={i} className="flex justify-between items-center py-2 border-b border-white/5">
+                      <input
+                        value={ex.label}
+                        onChange={(e) => updateExtraValue(goals.customNames.gestor, i, "label", e.target.value)}
+                        className="bg-transparent text-sm text-slate-400 font-medium outline-none w-32 focus:text-[#00D4C5]"
+                      />
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-500 font-bold text-sm">R$</span>
+                        <input
+                          type="number"
+                          value={ex.val}
+                          onChange={(e) => updateExtraValue(goals.customNames.gestor, i, "val", e.target.value)}
+                          className="bg-transparent text-right font-bold text-white outline-none w-24 focus:text-[#00D4C5]"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => closeVariable(goals.customNames.gestor, "Gestor", data.total, { realized: data.total })}
+                    className="bg-[#00D4C5] hover:bg-[#00c0b2] text-[#021017] px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg hover:shadow-[#00D4C5]/20 flex items-center gap-2"
+                  >
+                    <Lock size={16} /> Fechar Variável
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* --- PRODUCT TAB --- */}
+        {activeTab === "PRODUCT" && (() => {
+          const data = calculateManagement("produto");
+          return (
+            <div className="animate-fadeIn space-y-8">
+              <div className="bg-[#0A2230] p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-[#00D4C5]/5 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                <div className="flex justify-between items-start mb-10 relative">
+                  <div>
+                    <h2 className="text-3xl font-black text-white mb-1"><input value={goals.customNames.produto} onChange={(e) => setGoals(prev => ({ ...prev, customNames: { ...prev.customNames, produto: e.target.value } }))} className="bg-transparent outline-none w-full placeholder-slate-600 focus:text-[#00D4C5] transition-colors" placeholder="Nome do PO" /></h2>
+                    <p className="text-[#00D4C5] font-bold text-sm tracking-widest uppercase">Product Owner</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Variável</p>
+                    <p className="text-4xl font-black text-[#00D4C5]">{formatCurrency(data.total)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 bg-[#0B132B]/50 p-6 rounded-3xl mb-8">
+                  <SummaryItem label="Bônus Faturamento (Time)" value={data.v1} highlight />
+                  <SummaryItem label="Bônus Volume Reuniões" value={data.v2} />
+                  <SummaryItem label="Bônus Eficiência (Meta Equipe)" value={data.v3} />
+                  <SummaryItem label="Comissão Faturamento (0.6%)" value={data.v4} />
+                  <SummaryItem label="Override Qualificação (10%)" value={data.v5} />
+                  {data.extras.map((ex, i) => (
+                    <div key={i} className="flex justify-between items-center py-2 border-b border-white/5">
+                      <input
+                        value={ex.label}
+                        onChange={(e) => updateExtraValue(goals.customNames.produto, i, "label", e.target.value)}
+                        className="bg-transparent text-sm text-slate-400 font-medium outline-none w-32 focus:text-[#00D4C5]"
+                      />
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-500 font-bold text-sm">R$</span>
+                        <input
+                          type="number"
+                          value={ex.val}
+                          onChange={(e) => updateExtraValue(goals.customNames.produto, i, "val", e.target.value)}
+                          className="bg-transparent text-right font-bold text-white outline-none w-24 focus:text-[#00D4C5]"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => closeVariable(goals.customNames.produto, "Product", data.total, { realized: data.total })}
+                    className="bg-[#00D4C5] hover:bg-[#00c0b2] text-[#021017] px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg hover:shadow-[#00D4C5]/20 flex items-center gap-2"
+                  >
+                    <Lock size={16} /> Fechar Variável
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* --- LDR TAB --- */}
+        {activeTab === "LDR" && (() => {
+          const data = calculateLDR();
+          return (
+            <div className="animate-fadeIn space-y-8">
+              <div className="bg-[#0A2230] p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-[#00D4C5]/5 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                <div className="flex justify-between items-start mb-10 relative">
+                  <div>
+                    <h2 className="text-3xl font-black text-white mb-1"><input value={goals.customNames.ldr} onChange={(e) => setGoals(prev => ({ ...prev, customNames: { ...prev.customNames, ldr: e.target.value } }))} className="bg-transparent outline-none w-full placeholder-slate-600 focus:text-[#00D4C5] transition-colors" placeholder="Nome do LDR" /></h2>
+                    <p className="text-[#00D4C5] font-bold text-sm tracking-widest uppercase">LDR Account</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Variável</p>
+                    <p className="text-4xl font-black text-[#00D4C5]">{formatCurrency(data.total)}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-8">
+                  <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Meta Garimpo</p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        value={goals.ldrStats?.garimpadosMeta || 100}
+                        onChange={(e) => setGoals(prev => ({ ...prev, ldrStats: { ...prev.ldrStats, garimpadosMeta: parseNum(e.target.value) } }))}
+                        className="bg-transparent text-xl font-black text-white outline-none w-20"
+                      />
+                    </div>
+                  </div>
+                  <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Garimpados Real</p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        value={goals.ldrStats?.garimpados || 0}
+                        onChange={(e) => setGoals(prev => ({ ...prev, ldrStats: { ...prev.ldrStats, garimpados: parseNum(e.target.value) } }))}
+                        className="bg-transparent text-xl font-black text-white outline-none w-20"
+                      />
+                    </div>
+                  </div>
+                  <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Meta Cards</p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        value={goals.ldrStats?.cardsMeta || 20}
+                        onChange={(e) => setGoals(prev => ({ ...prev, ldrStats: { ...prev.ldrStats, cardsMeta: parseNum(e.target.value) } }))}
+                        className="bg-transparent text-xl font-black text-white outline-none w-20"
+                      />
+                    </div>
+                  </div>
+                  <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Cards Real</p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        value={goals.ldrStats?.cards || 0}
+                        onChange={(e) => setGoals(prev => ({ ...prev, ldrStats: { ...prev.ldrStats, cards: parseNum(e.target.value) } }))}
+                        className="bg-transparent text-xl font-black text-white outline-none w-20"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 bg-[#0B132B]/50 p-6 rounded-3xl mb-8">
+                  <SummaryItem label="Bônus Reuniões (Time)" value={data.v1} highlight />
+                  <SummaryItem label="Bônus Garimpo" value={data.v2} />
+                  <SummaryItem label="Bônus Cards" value={data.v3} />
+                  <SummaryItem label="Bônus Faturamento (Time)" value={data.v4} />
+                  {data.extras.map((ex, i) => (
+                    <div key={i} className="flex justify-between items-center py-2 border-b border-white/5">
+                      <input
+                        value={ex.label}
+                        onChange={(e) => updateExtraValue(goals.customNames.ldr, i, "label", e.target.value)}
+                        className="bg-transparent text-sm text-slate-400 font-medium outline-none w-32 focus:text-[#00D4C5]"
+                      />
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-500 font-bold text-sm">R$</span>
+                        <input
+                          type="number"
+                          value={ex.val}
+                          onChange={(e) => updateExtraValue(goals.customNames.ldr, i, "val", e.target.value)}
+                          className="bg-transparent text-right font-bold text-white outline-none w-24 focus:text-[#00D4C5]"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => closeVariable(goals.customNames.ldr, "LDR", data.total, { realized: data.total, achievement: data.atingimentoMedia })}
+                    className="bg-[#00D4C5] hover:bg-[#00c0b2] text-[#021017] px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg hover:shadow-[#00D4C5]/20 flex items-center gap-2"
+                  >
+                    <Lock size={16} /> Fechar Variável
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {activeTab === "FECHAMENTO" && (
+          <div className="animate-fadeIn space-y-8">
+            <div className="flex justify-between items-center bg-[#0A2230] p-8 rounded-[2rem] border border-white/5">
+              <h2 className="text-2xl font-black text-white">Consolidado do Mês</h2>
+              <div className="flex gap-4">
+                <button onClick={handleConsolidateHistory} className="bg-indigo-500 hover:bg-indigo-600 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-white transition-all">
+                  Consolidar para Histórico
+                </button>
+                <button onClick={exportReport} className="bg-emerald-500 hover:bg-emerald-600 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-white transition-all flex items-center gap-2">
+                  <Download size={16} /> Exportar XLSX
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-[#0A2230] p-6 rounded-[2rem] border border-white/5">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-black text-white">Variáveis Fechadas</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => setFechamentoSort("VALUE_DESC")} className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${fechamentoSort === "VALUE_DESC" ? "bg-[#00D4C5] text-black" : "bg-white/5 text-slate-400"}`}>Maior Valor</button>
+                  <button onClick={() => setFechamentoSort("VALUE_ASC")} className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${fechamentoSort === "VALUE_ASC" ? "bg-[#00D4C5] text-black" : "bg-white/5 text-slate-400"}`}>Menor Valor</button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-400 uppercase tracking-widest bg-white/5">
+                    <tr>
+                      <th className="px-4 py-3 rounded-l-xl">Data</th>
+                      <th className="px-4 py-3">Colaborador</th>
+                      <th className="px-4 py-3">Cargo</th>
+                      <th className="px-4 py-3 text-right">Meta</th>
+                      <th className="px-4 py-3 text-right">Realizado</th>
+                      <th className="px-4 py-3 text-right">Atingimento</th>
+                      <th className="px-4 py-3 text-right">Valor Variável</th>
+                      <th className="px-4 py-3 rounded-r-xl text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {closedTableData.length === 0 && (
+                      <tr>
+                        <td colSpan="8" className="px-4 py-8 text-center text-slate-500 italic">Nenhuma variável fechada neste mês.</td>
+                      </tr>
+                    )}
+                    {closedTableData.map((v) => (
+                      <tr key={v.id} className="hover:bg-white/5 transition-colors group">
+                        <td className="px-4 py-4 text-slate-400">{v.date}</td>
+                        <td className="px-4 py-4 font-bold text-white">{v.name}</td>
+                        <td className="px-4 py-4 text-xs font-bold uppercase text-[#00D4C5]">{v.role}</td>
+                        <td className="px-4 py-4 text-right text-slate-400">{v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-"}</td>
+                        <td className="px-4 py-4 text-right text-white">{v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-"}</td>
+                        <td className={`px-4 py-4 text-right font-bold ${v.achievement >= 100 ? "text-emerald-400" : "text-amber-400"}`}>{v.achievement ? `${v.achievement.toFixed(1)}%` : "-"}</td>
+                        <td className="px-4 py-4 text-right font-black text-[#00D4C5] text-lg">{formatCurrency(v.value)}</td>
+                        <td className="px-4 py-4 text-center">
+                          <button onClick={() => removeClosed(v.id)} className="text-slate-600 hover:text-red-400 transition-colors p-2">
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
+
+        {activeTab === "HISTÓRICO" && (
+          <div className="animate-fadeIn space-y-8">
+            <div className="flex justify-between items-center mb-6">
+              <select
+                value={selectedHistoryPerson}
+                onChange={(e) => setSelectedHistoryPerson(e.target.value)}
+                className="bg-[#0A2230] text-white px-4 py-2 rounded-xl border border-white/10 outline-none"
+              >
+                {allPeopleInHistory.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+
+              <div className="flex gap-2">
+                {['LAST_3', 'LAST_6', 'ALL'].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setHistoryFilter(f)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold ${historyFilter === f ? 'bg-[#00D4C5] text-black' : 'bg-white/5 text-slate-400'}`}
+                  >
+                    {f === 'LAST_3' ? '3 Meses' : f === 'LAST_6' ? '6 Meses' : 'Tudo'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <SimpleLineChart data={chartData.data} lines={chartData.lines} />
+
+            <div className="bg-[#0A2230] p-6 rounded-[2rem] border border-white/5">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-black text-white">Detalhamento</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => setHistorySort("VALUE_DESC")} className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${historySort === "VALUE_DESC" ? "bg-[#00D4C5] text-black" : "bg-white/5 text-slate-400"}`}>Maior Variável</button>
+                  <button onClick={() => setHistorySort("ACH_DESC")} className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${historySort === "ACH_DESC" ? "bg-[#00D4C5] text-black" : "bg-white/5 text-slate-400"}`}>Maior Atingimento</button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-400 uppercase tracking-widest bg-white/5">
+                    <tr>
+                      <th className="px-4 py-3 rounded-l-xl">Mês</th>
+                      <th className="px-4 py-3">Colaborador</th>
+                      <th className="px-4 py-3">Cargo</th>
+                      <th className="px-4 py-3 text-right">Resultado</th>
+                      <th className="px-4 py-3 text-right">Atingimento</th>
+                      <th className="px-4 py-3 rounded-r-xl text-right">Variável Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {historyTableData.length === 0 && (
+                      <tr>
+                        <td colSpan="6" className="px-4 py-8 text-center text-slate-500 italic">Nenhum dado histórico encontrado para o filtro selecionado.</td>
+                      </tr>
+                    )}
+                    {historyTableData.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-4 font-bold text-white">{row.month}</td>
+                        <td className="px-4 py-4">{row.person}</td>
+                        <td className="px-4 py-4 text-xs font-bold uppercase text-slate-500">{row.role}</td>
+                        <td className="px-4 py-4 text-right">{typeof row.value === 'number' && row.role === 'Closer' ? formatCurrency(row.value) : row.role === 'SDR' ? row.score : formatCurrency(row.value)}</td>
+                        <td className={`px-4 py-4 text-right font-bold ${row.achievement >= 100 ? "text-[#00D4C5]" : "text-amber-400"}`}>{row.achievement.toFixed(2)}%</td>
+                        <td className="px-4 py-4 text-right font-black text-[#00D4C5]">{formatCurrency(row.variable)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );
 };
+
+// --- ARQUIVO ÚNICO POR ENQUANTO PARA SIMPLIFICAR ---
+const BriefcaseIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+)
+
+const UsersIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+)
 
 export default App;
