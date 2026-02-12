@@ -138,13 +138,16 @@ const App = () => {
   const handleFileUpload = async (e, type) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    console.log("📁 Arquivo selecionado:", file.name, "Tipo:", file.type, "Tamanho:", file.size);
     const { success, rows, error } = await handleUpload(file, type);
+    console.log("Upload result:", { success, error });
     if (success) {
       if (type === "VENDAS") setVendasRaw(rows);
       if (type === "REUNIOES") setReunioesRaw(rows);
       toast.success(`Arquivo salvo com sucesso para ${selectedMonth}/${selectedYear}!`);
     } else {
-      toast.error("Erro ao salvar arquivo.");
+      console.error("❌ Erro detalhado:", error);
+      toast.error(`Erro ao salvar arquivo: ${error}`);
     }
   };
 
@@ -577,7 +580,7 @@ const App = () => {
               {/* UPLOAD AREA */}
               <div className="mt-10 pt-10 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="bg-[#0B132B] p-6 rounded-3xl border border-dashed border-slate-700 hover:border-[#00D4C5] transition-colors relative group">
-                  <input type="file" onChange={(e) => handleFileUpload(e, "VENDAS")} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                  <input type="file" accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => handleFileUpload(e, "VENDAS")} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
                   <div className="flex flex-col items-center justify-center gap-3 text-slate-400 group-hover:text-[#00D4C5] transition-colors">
                     <div className="bg-white/5 p-4 rounded-full">
                       {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
@@ -587,7 +590,7 @@ const App = () => {
                 </div>
 
                 <div className="bg-[#0B132B] p-6 rounded-3xl border border-dashed border-slate-700 hover:border-[#00D4C5] transition-colors relative group">
-                  <input type="file" onChange={(e) => handleFileUpload(e, "REUNIOES")} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                  <input type="file" accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => handleFileUpload(e, "REUNIOES")} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
                   <div className="flex flex-col items-center justify-center gap-3 text-slate-400 group-hover:text-[#00D4C5] transition-colors">
                     <div className="bg-white/5 p-4 rounded-full">
                       {uploading ? <Loader2 className="animate-spin" /> : <Upload />}

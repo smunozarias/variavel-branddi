@@ -5,7 +5,22 @@ import { initialRules, initialGoals } from '../utils/constants';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+console.log("🔧 Inicializando Supabase:");
+console.log("URL completa:", supabaseUrl);
+console.log("URL length:", supabaseUrl?.length);
+console.log("Key length:", supabaseKey?.length);
+console.log("URL:", supabaseUrl ? "✓ Configurada" : "❌ NÃO CONFIGURADA");
+console.log("Key:", supabaseKey ? "✓ Configurada" : "❌ NÃO CONFIGURADA");
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error("❌ ERRO CRÍTICO: Variáveis de ambiente não carregadas!");
+    console.error("import.meta.env:", import.meta.env);
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+console.log("✓ Cliente Supabase criado");
 
 export function useSupabase(selectedMonth, selectedYear, reportTitle) {
     const [loading, setLoading] = useState(false);
@@ -135,18 +150,54 @@ export function useSupabase(selectedMonth, selectedYear, reportTitle) {
     };
 
     const handleUpload = async (file, type) => {
-        if (!file) return { success: false };
+        if (!file) {
+            console.log("❌ Nenhum arquivo selecionado");
+            return { success: false, error: 'Nenhum arquivo selecionado' };
+        }
+        
+        // Validar tipo de arquivo
+        const validTypes = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'];
+        console.log("📋 Tipo do arquivo:", file.type);
+        console.log("✅ Tipos válidos:", validTypes);
+        console.log("✓ Tipo válido?", validTypes.includes(file.type));
+        
+        if (!validTypes.includes(file.type)) {
+            console.warn("⚠️ Formato inválido");
+            return { success: false, error: 'Formato inválido. Use .xlsx, .xls ou .csv' };
+        }
 
         setUploading(true);
         try {
+            console.log("🔄 Processando arquivo...");
             const rows = await processFile(file);
+            console.log("✓ Arquivo processado. Linhas:", rows.length);
+            
             const fileName = getFileName(type);
-            const { error } = await supabase.storage.from('planilhas').upload(fileName, file, { upsert: true });
-            if (error) throw error;
+            console.log("📤 Enviando para Supabase...");
+            console.log("Nome do arquivo:", fileName);
+            console.log("Bucket: planilhas");
+            console.log("URL Supabase:", supabaseUrl);
+            
+            // Upload com tipo MIME correto
+            const { error } = await supabase.storage
+                .from('planilhas')
+                .upload(fileName, file, { 
+                    upsert: true,
+                    contentType: file.type
+                });
+            
+            if (error) {
+                console.error("❌ Erro do Supabase:", error);
+                throw error;
+            }
+            
+            console.log("✅ Upload realizado com sucesso!");
             return { success: true, rows };
         } catch (err) {
-            console.error("Erro upload:", err);
-            return { success: false, error: err };
+            console.error("❌ Erro completo:", err);
+            console.error("Mensagem:", err.message);
+            console.error("Status:", err.status);
+            return { success: false, error: err.message || 'Erro ao fazer upload' };
         } finally {
             setUploading(false);
         }
