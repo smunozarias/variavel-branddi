@@ -463,13 +463,12 @@ const App = () => {
         setSelectedPerson={setSelectedPerson}
       />
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-7xl mx-auto h-full">
+      <main className="max-w-7xl mx-auto p-8">
 
         {/* SELETOR DE MÊS E ANO (GLOBAL) */}
         {activeTab !== "HISTÓRICO" && (
-          <div className="flex justify-end items-center gap-4 mb-8 p-6 md:p-8 pt-6">
-            <div className="flex items-center gap-3 bg-white/5 px-4 py-2.5 rounded-lg border border-white/10 hover:border-[#00D4C5]/30 transition-colors">
+          <div className="flex justify-end items-center gap-4 mb-8">
+            <div className="flex items-center gap-2 bg-[#0B132B] px-4 py-2 rounded-xl border border-white/10">
               <Calendar size={16} className="text-[#00D4C5]" />
               <select
                 value={selectedMonth}
@@ -495,8 +494,7 @@ const App = () => {
 
         {/* --- DASHBOARD --- */}
         {activeTab === "DASHBOARD" && (
-          <div className="space-y-8 animate-fadeIn p-6 md:p-8">
-            {/* KPI Cards */}
+          <div className="space-y-6 animate-fadeIn">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <StatCard
                 label="Faturamento Real"
@@ -518,120 +516,86 @@ const App = () => {
               />
             </div>
 
-            {/* Global Settings Section */}
-            <div className="card-base p-8 md:p-10">
-              <div className="flex items-center gap-4 mb-8">
-                <div className="p-3 bg-[#00D4C5]/15 rounded-lg">
-                  <Sliders size={22} className="text-[#00D4C5]" />
-                </div>
-                <div>
-                  <h2 className="text-xl md:text-2xl font-black text-white">Ajustes Globais</h2>
-                  <p className="text-xs text-slate-400 mt-1">Configure as metas e dados do seu time</p>
-                </div>
+            <div className="bg-[#0A2230]/40 p-8 rounded-[2.5rem] border border-white/5 backdrop-blur-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <Sliders size={20} className="text-[#00D4C5]" />
+                <h2 className="text-xl font-black uppercase tracking-widest text-[#00D4C5]">Ajustes Globais</h2>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* Meta Faturamento */}
-                <div className="space-y-3">
-                  <label className="text-caption">Meta Faturamento</label>
-                  <div className="flex items-center gap-3 bg-white/5 px-4 py-3 rounded-lg border border-white/10 focus-within:border-[#00D4C5] focus-within:bg-white/8 transition-all">
-                    <Target size={18} className="text-[#00D4C5] flex-shrink-0" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Meta Faturamento</label>
+                  <div className="flex items-center gap-2 bg-[#0B132B] p-4 rounded-2xl border border-white/10 focus-within:border-[#00D4C5] transition-colors">
+                    <Target size={18} className="text-[#00D4C5]" />
                     <input
                       type="number"
                       value={goals.timeMeta}
                       onChange={(e) => setGoals(prev => ({ ...prev, timeMeta: parseNum(e.target.value) }))}
-                      className="bg-transparent font-semibold text-base outline-none w-full text-white placeholder-slate-500"
+                      className="bg-transparent font-black text-lg outline-none w-full text-white placeholder-slate-600"
                     />
                   </div>
                 </div>
 
-                {/* Faturamento Real Manual */}
-                <div className="space-y-3">
-                  <label className="text-caption">Fat. Real (Manual)</label>
-                  <div className="flex items-center gap-3 bg-white/5 px-4 py-3 rounded-lg border border-white/10 focus-within:border-[#00D4C5] focus-within:bg-white/8 transition-all">
-                    <Edit2 size={18} className="text-amber-400 flex-shrink-0" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fat. Real (Manual)</label>
+                  <div className="flex items-center gap-2 bg-[#0B132B] p-4 rounded-2xl border border-white/10 focus-within:border-[#00D4C5] transition-colors">
+                    <Edit2 size={18} className="text-amber-400" />
                     <input
                       type="number"
                       value={goals.timeRealManual}
-                      placeholder="Automático"
+                      placeholder="Auto"
                       onChange={(e) => setGoals(prev => ({ ...prev, timeRealManual: e.target.value }))}
-                      className="bg-transparent font-semibold text-base outline-none w-full text-white placeholder-slate-500"
+                      className="bg-transparent font-black text-lg outline-none w-full text-white placeholder-slate-600"
                     />
                   </div>
                 </div>
 
-                {/* Meta Reuniões */}
-                <div className="space-y-3">
-                  <label className="text-caption">Meta Reuniões (Time)</label>
-                  <div className="flex items-center gap-3 bg-white/5 px-4 py-3 rounded-lg border border-white/10 focus-within:border-[#00D4C5] focus-within:bg-white/8 transition-all">
-                    <UsersIcon className="text-[#00D4C5] flex-shrink-0" size={18} />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Meta Reuniões (Time)</label>
+                  <div className="flex items-center gap-2 bg-[#0B132B] p-4 rounded-2xl border border-white/10 focus-within:border-[#00D4C5] transition-colors">
+                    <UsersIcon className="text-[#00D4C5]" size={18} />
                     <input
                       type="number"
                       value={goals.meetingsMetaTotal}
                       onChange={(e) => setGoals(prev => ({ ...prev, meetingsMetaTotal: parseNum(e.target.value) }))}
-                      className="bg-transparent font-semibold text-base outline-none w-full text-white"
+                      className="bg-transparent font-black text-lg outline-none w-full text-white"
                     />
                   </div>
                 </div>
 
-                {/* Eficiência Time */}
-                <div className="space-y-3">
-                  <label className="text-caption">Eficiência Time (%)</label>
-                  <div className="flex items-center gap-3 bg-white/5 px-4 py-3 rounded-lg border border-white/10 focus-within:border-[#00D4C5] focus-within:bg-white/8 transition-all">
-                    <Activity size={18} className="text-[#00D4C5] flex-shrink-0" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Eficiência Time (%)</label>
+                  <div className="flex items-center gap-2 bg-[#0B132B] p-4 rounded-2xl border border-white/10 focus-within:border-[#00D4C5] transition-colors">
+                    <Activity size={18} className="text-[#00D4C5]" />
                     <input
                       type="number"
                       value={goals.teamEfficiencyManual}
                       onChange={(e) => setGoals(prev => ({ ...prev, teamEfficiencyManual: parseNum(e.target.value) }))}
-                      className="bg-transparent font-semibold text-base outline-none w-full text-white"
+                      className="bg-transparent font-black text-lg outline-none w-full text-white"
                     />
                   </div>
                 </div>
               </div>
 
               {/* UPLOAD AREA */}
-              <div className="mt-10 pt-10 border-t border-white/10">
-                <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                  <Cloud size={20} className="text-[#00D4C5]" />
-                  Importar Planilhas
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Upload Vendas */}
-                  <div className="bg-gradient-to-br from-white/5 to-white/2 p-8 rounded-lg border-2 border-dashed border-slate-600 hover:border-[#00D4C5] hover:from-[#00D4C5]/10 transition-all relative group cursor-pointer">
-                    <input 
-                      type="file" 
-                      accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
-                      onChange={(e) => handleFileUpload(e, "VENDAS")} 
-                      className="absolute inset-0 opacity-0 cursor-pointer z-10" 
-                    />
-                    <div className="flex flex-col items-center justify-center gap-4 text-slate-400 group-hover:text-[#00D4C5] transition-colors">
-                      <div className="bg-white/10 p-4 rounded-full group-hover:bg-[#00D4C5]/20 transition-colors">
-                        {uploading ? <Loader2 className="animate-spin text-[#00D4C5]" size={28} /> : <Upload size={28} />}
-                      </div>
-                      <div className="text-center">
-                        <p className="font-bold text-sm text-white">Planilha Vendas</p>
-                        <p className="text-xs text-slate-400 mt-1">Clique ou arraste o arquivo</p>
-                      </div>
+              <div className="mt-10 pt-10 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-[#0B132B] p-6 rounded-3xl border border-dashed border-slate-700 hover:border-[#00D4C5] transition-colors relative group">
+                  <input type="file" accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => handleFileUpload(e, "VENDAS")} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                  <div className="flex flex-col items-center justify-center gap-3 text-slate-400 group-hover:text-[#00D4C5] transition-colors">
+                    <div className="bg-white/5 p-4 rounded-full">
+                      {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
                     </div>
+                    <span className="text-xs font-bold uppercase tracking-widest">Upload Planilha Vendas</span>
                   </div>
+                </div>
 
-                  {/* Upload Reuniões */}
-                  <div className="bg-gradient-to-br from-white/5 to-white/2 p-8 rounded-lg border-2 border-dashed border-slate-600 hover:border-[#00D4C5] hover:from-[#00D4C5]/10 transition-all relative group cursor-pointer">
-                    <input 
-                      type="file" 
-                      accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
-                      onChange={(e) => handleFileUpload(e, "REUNIOES")} 
-                      className="absolute inset-0 opacity-0 cursor-pointer z-10" 
-                    />
-                    <div className="flex flex-col items-center justify-center gap-4 text-slate-400 group-hover:text-[#00D4C5] transition-colors">
-                      <div className="bg-white/10 p-4 rounded-full group-hover:bg-[#00D4C5]/20 transition-colors">
-                        {uploading ? <Loader2 className="animate-spin text-[#00D4C5]" size={28} /> : <Upload size={28} />}
-                      </div>
-                      <div className="text-center">
-                        <p className="font-bold text-sm text-white">Planilha Reuniões</p>
-                        <p className="text-xs text-slate-400 mt-1">Clique ou arraste o arquivo</p>
-                      </div>
+                <div className="bg-[#0B132B] p-6 rounded-3xl border border-dashed border-slate-700 hover:border-[#00D4C5] transition-colors relative group">
+                  <input type="file" accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => handleFileUpload(e, "REUNIOES")} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                  <div className="flex flex-col items-center justify-center gap-3 text-slate-400 group-hover:text-[#00D4C5] transition-colors">
+                    <div className="bg-white/5 p-4 rounded-full">
+                      {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
                     </div>
+                    <span className="text-xs font-bold uppercase tracking-widest">Upload Planilha Reuniões</span>
                   </div>
                 </div>
               </div>
@@ -1601,7 +1565,6 @@ const App = () => {
           </div>
         )}
 
-        </div>
       </main>
     </div>
   );

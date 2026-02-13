@@ -2,28 +2,29 @@ import React from 'react';
 import { Calculator, Loader2 } from "lucide-react";
 
 const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPerson }) => (
-    <nav className="bg-gradient-to-r from-[#0A1628]/95 to-[#0F1F2E]/95 backdrop-blur-xl border-b border-[#00D4C5]/15 px-6 md:px-8 py-6 sticky top-0 z-50 shadow-2xl">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
-            {/* Logo e Título */}
-            <div className="flex items-center gap-4 flex-shrink-0">
-                <div className="bg-[#00D4C5] p-3 rounded-xl text-[#021017] shadow-lg shadow-[#00D4C5]/30">
+    <nav className="bg-[#0A2230]/80 backdrop-blur-xl border-b border-[#00D4C5]/10 px-8 py-5 sticky top-0 z-50 shadow-2xl">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-5">
+                <div className="bg-[#00D4C5] p-3 rounded-2xl text-[#021017] shadow-[0_0_20px_rgba(0,212,197,0.4)]">
                     <Calculator size={24} />
                 </div>
                 <div>
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-xl md:text-2xl font-black tracking-tight text-white">
-                            {reportTitle || "Relatório"}
-                        </h1>
-                        {loading && <Loader2 size={18} className="animate-spin text-[#00D4C5]" />}
+                    <div className="flex items-center gap-3">
+                        <input
+                            type="text"
+                            value={reportTitle}
+                            readOnly
+                            className="text-xl font-black tracking-tight bg-transparent border-none p-0 focus:ring-0 w-64 outline-none capitalize"
+                        />
+                        {loading && <Loader2 size={16} className="animate-spin text-[#00D4C5]" />}
                     </div>
-                    <p className="text-[10px] md:text-xs text-[#00D4C5] font-bold uppercase tracking-[0.15em] mt-1">
+                    <p className="text-[10px] text-[#00D4C5] font-black uppercase tracking-[0.3em] mt-1">
                         Variável Comercial Branddi
                     </p>
                 </div>
             </div>
 
-            {/* Abas */}
-            <div className="flex items-center gap-2 bg-white/5 p-2 rounded-xl overflow-x-auto flex-wrap justify-center md:justify-end">
+            <div className="flex items-center gap-1 bg-white/5 p-1.5 rounded-2xl overflow-x-auto max-w-full">
                 {["DASHBOARD", "SDR", "CLOSER", "GESTOR", "PRODUCT", "LDR", "FECHAMENTO", "HISTÓRICO", "REGRAS"].map((tab) => (
                     <button
                         key={tab}
@@ -31,11 +32,8 @@ const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPers
                             setActiveTab(tab);
                             if (tab !== "HISTÓRICO" && setSelectedPerson) setSelectedPerson("");
                         }}
-                        className={`px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold tracking-wide transition-all uppercase whitespace-nowrap ${
-                            activeTab === tab 
-                                ? "bg-[#00D4C5] text-[#021017] shadow-lg shadow-[#00D4C5]/30" 
-                                : "text-slate-400 hover:text-white hover:bg-white/10"
-                        }`}
+                        className={`px-5 py-2.5 rounded-xl text-[11px] font-black tracking-wider transition-all uppercase ${activeTab === tab ? "bg-[#00D4C5] text-[#021017]" : "text-slate-400 hover:text-white hover:bg-white/10"
+                            }`}
                     >
                         {tab}
                     </button>
