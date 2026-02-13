@@ -26,5 +26,8 @@ const StatCard = ({ label, value, sub, icon }) => (
         <div className="flex items-center gap-2 text-[11px] md:text-xs font-medium text-cyan-100/50 border-t border-white/5 pt-4">
             <div className="w-1.5 h-1.5 rounded-full bg-[#00D4C5] animate-pulse flex-shrink-0"></div>
             <span className="truncate">{sub}</span>
+        </div>
+    </div>
+);
 
 export default StatCard;

@@ -36,6 +36,10 @@ const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPers
                                 ? "bg-[#00D4C5] text-[#021017] shadow-lg shadow-[#00D4C5]/30" 
                                 : "text-slate-400 hover:text-white hover:bg-white/10"
                         }`}
+                    >
+                        {tab}
+                    </button>
+                ))}
             </div>
         </div>
     </nav>
