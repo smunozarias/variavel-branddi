@@ -35,7 +35,7 @@ const extractValue = (row, key) => {
     sdr: ["Negócio - SDR", "sdr", "sdr responsável", "Atividade - Proprietário", "Proprietário da atividade"],
     proprietario: ["Negócio - Proprietário", "Proprietário", "closer", "proprietario"],
     valor: ["Negócio - Valor do negócio", "Valor", "Amount"],
-    soma: ["Soma TOTAL", "soma total", "score"],
+    soma: ["Soma TOTAL", "soma total", "score", "Negócio - Pontuação total reunião"],
     nome: ["Organização - Nome", "Negócio - Nome do negócio", "Nome", "cliente", "titulo"],
   };
   const targets = map[key.toLowerCase()] || [key.toLowerCase()];
