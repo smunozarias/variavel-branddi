@@ -63,9 +63,19 @@ export function useSupabase(selectedMonth, selectedYear, reportTitle) {
 
         setSavingManual(true);
         try {
-            let currentHistory = { ...historyDB };
-            const monthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+            // Buscando histórico mais recente do Supabase para evitar sobrescrever com estado cacheado vazio
+            let latestHistory = {};
+            try {
+                const { data } = await supabase.storage.from('planilhas').download(HISTORY_FILE_NAME);
+                if (data) {
+                    const textData = await data.text();
+                    latestHistory = JSON.parse(textData);
+                }
+            } catch (err) {
+                console.log("Aviso: Falha ao baixar o histórico atual antes da consolidação (pode ser o primeiro mês ou arquivo ausente).");
+            }
 
+            const monthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
             const monthSummary = {
                 title: reportTitle,
                 teamStats: {
@@ -84,13 +94,21 @@ export function useSupabase(selectedMonth, selectedYear, reportTitle) {
                 }))
             };
 
-            currentHistory[monthKey] = monthSummary;
-            setHistoryDB(currentHistory);
+            // Fazer merge do histórico mais recente com o novo resumo do mês
+            const newHistory = { ...latestHistory, [monthKey]: monthSummary };
+            setHistoryDB(newHistory); // atualiza state local
 
-            const blob = new Blob([JSON.stringify(currentHistory)], { type: "application/json" });
-            await supabase.storage.from('planilhas').upload(HISTORY_FILE_NAME, blob, { upsert: true });
+            const blob = new Blob([JSON.stringify(newHistory)], { type: "application/json" });
 
-            return { success: true, message: `Histórico consolidado com sucesso para ${reportTitle}!` };
+            // Upload do arquivo principal
+            const { error: uploadError } = await supabase.storage.from('planilhas').upload(HISTORY_FILE_NAME, blob, { upsert: true });
+            if (uploadError) throw uploadError;
+
+            // Fazer Backup Mensal automático do Histórico
+            const backupFileName = `HISTORY_DB_BACKUP_${String(selectedMonth).padStart(2, '0')}_${selectedYear}.json`;
+            await supabase.storage.from('planilhas').upload(backupFileName, blob, { upsert: true });
+
+            return { success: true, message: `Histórico consolidado com sucesso para ${reportTitle} e backup gerado!` };
         } catch (err) {
             console.error("Erro ao consolidar histórico:", err);
             return { success: false, message: "Erro ao salvar histórico no Supabase." };
@@ -154,13 +172,13 @@ export function useSupabase(selectedMonth, selectedYear, reportTitle) {
             console.log("❌ Nenhum arquivo selecionado");
             return { success: false, error: 'Nenhum arquivo selecionado' };
         }
-        
+
         // Validar tipo de arquivo
         const validTypes = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'];
         console.log("📋 Tipo do arquivo:", file.type);
         console.log("✅ Tipos válidos:", validTypes);
         console.log("✓ Tipo válido?", validTypes.includes(file.type));
-        
+
         if (!validTypes.includes(file.type)) {
             console.warn("⚠️ Formato inválido");
             return { success: false, error: 'Formato inválido. Use .xlsx, .xls ou .csv' };
@@ -171,26 +189,26 @@ export function useSupabase(selectedMonth, selectedYear, reportTitle) {
             console.log("🔄 Processando arquivo...");
             const rows = await processFile(file);
             console.log("✓ Arquivo processado. Linhas:", rows.length);
-            
+
             const fileName = getFileName(type);
             console.log("📤 Enviando para Supabase...");
             console.log("Nome do arquivo:", fileName);
             console.log("Bucket: planilhas");
             console.log("URL Supabase:", supabaseUrl);
-            
+
             // Upload com tipo MIME correto
             const { error } = await supabase.storage
                 .from('planilhas')
-                .upload(fileName, file, { 
+                .upload(fileName, file, {
                     upsert: true,
                     contentType: file.type
                 });
-            
+
             if (error) {
                 console.error("❌ Erro do Supabase:", error);
                 throw error;
             }
-            
+
             console.log("✅ Upload realizado com sucesso!");
             return { success: true, rows };
         } catch (err) {
