@@ -699,7 +699,7 @@ const App = () => {
                       <h4 className="text-xs font-black uppercase tracking-widest text-[#00D4C5] mb-4 flex items-center gap-2">
                         <ClipboardList size={14} /> Detalhe de Reuniões
                       </h4>
-                      <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                      <div className="space-y-2">
                         {data.meetingsDetails.length === 0 && <p className="text-xs text-slate-500 italic">Nenhuma reunião registrada.</p>}
                         {data.meetingsDetails.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
@@ -717,7 +717,7 @@ const App = () => {
                       <h4 className="text-xs font-black uppercase tracking-widest text-emerald-400 mb-4 flex items-center gap-2">
                         <TrendingUp size={14} /> Vendas Iniciadas
                       </h4>
-                      <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                      <div className="space-y-2">
                         {data.salesDetails.length === 0 && <p className="text-xs text-slate-500 italic">Nenhuma venda iniciada.</p>}
                         {data.salesDetails.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
