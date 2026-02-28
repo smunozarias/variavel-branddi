@@ -321,7 +321,10 @@ const App = () => {
   };
 
   // --- FILTROS DE HISTÓRICO ---
-  const sortedMonths = Object.keys(historyDB).sort();
+  const sortedMonths = useMemo(() => {
+    if (!historyDB || typeof historyDB !== 'object' || Object.keys(historyDB).length === 0) return [];
+    return Object.keys(historyDB).sort();
+  }, [historyDB]);
   const availableYears = useMemo(() => {
     const years = new Set();
     sortedMonths.forEach(m => years.add(m.split('-')[0]));
@@ -342,11 +345,15 @@ const App = () => {
 
     if (selectedHistoryPerson === "GLOBAL") {
       return {
-        data: filteredMonths.map(m => ({
-          label: historyDB[m].title.split(' ')[0].substring(0, 3),
-          meta: historyDB[m].teamStats.revenueGoal,
-          real: historyDB[m].teamStats.revenueReal
-        })),
+        data: filteredMonths.map(m => {
+          const monthData = historyDB[m];
+          if (!monthData || !monthData.title || !monthData.teamStats) return null;
+          return {
+            label: monthData.title.split(' ')[0].substring(0, 3),
+            meta: monthData.teamStats.revenueGoal || 0,
+            real: monthData.teamStats.revenueReal || 0
+          };
+        }).filter(Boolean),
         lines: [
           { key: 'meta', color: '#94a3b8', name: 'Meta' },
           { key: 'real', color: '#00D4C5', name: 'Realizado' }
@@ -387,31 +394,43 @@ const App = () => {
 
   const allPeopleInHistory = useMemo(() => {
     const names = new Set();
-    Object.values(historyDB).forEach(month => {
-      month.individuals?.forEach(ind => names.add(ind.name));
-    });
+    if (historyDB && typeof historyDB === 'object') {
+      Object.values(historyDB).forEach(month => {
+        if (month && month.individuals) {
+          month.individuals.forEach(ind => names.add(ind.name));
+        }
+      });
+    }
     return ["GLOBAL", ...Array.from(names).sort()];
   }, [historyDB]);
 
   // --- DADOS PARA TABELA (HISTÓRICO) ---
   const historyTableData = useMemo(() => {
     let list = [];
+    if (!historyDB || typeof historyDB !== 'object') return list;
+
     if (selectedHistoryPerson === "GLOBAL") {
-      list = filteredMonths.map(m => ({
-        month: historyDB[m].title,
-        person: "Equipe",
-        role: "Global",
-        score: "-",
-        value: historyDB[m].teamStats.revenueReal,
-        achievement: historyDB[m].teamStats.revenueGoal > 0 ? (historyDB[m].teamStats.revenueReal / historyDB[m].teamStats.revenueGoal) * 100 : 0,
-        variable: historyDB[m].individuals.reduce((acc, ind) => acc + ind.value, 0) // Sum of variables
-      }));
+      list = filteredMonths.map(m => {
+        const monthData = historyDB[m];
+        if (!monthData || !monthData.title) return null;
+        return {
+          month: monthData.title,
+          person: "Equipe",
+          role: "Global",
+          score: "-",
+          value: monthData.teamStats?.revenueReal || 0,
+          achievement: monthData.teamStats?.revenueGoal > 0 ? (monthData.teamStats.revenueReal / monthData.teamStats.revenueGoal) * 100 : 0,
+          variable: (monthData.individuals || []).reduce((acc, ind) => acc + (ind.value || 0), 0) // Sum of variables
+        };
+      }).filter(Boolean);
     } else {
       filteredMonths.forEach(m => {
-        const p = historyDB[m].individuals.find(i => i.name === selectedHistoryPerson);
+        const monthData = historyDB[m];
+        if (!monthData || !monthData.individuals) return;
+        const p = monthData.individuals.find(i => i.name === selectedHistoryPerson);
         if (p) {
           list.push({
-            month: historyDB[m].title,
+            month: monthData.title,
             person: p.name,
             role: p.role,
             score: p.role === "SDR" ? p.realized : "-",
