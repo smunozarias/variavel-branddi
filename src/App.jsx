@@ -4,7 +4,7 @@ import {
   Upload, Search, DollarSign, Activity, Award,
   Sliders, Trash2, Lock, Edit2, Target, TrendingUp, UserCheck,
   ClipboardList, Settings2, Download, Star, Cloud, Loader2, Calendar, Save,
-  History, BarChart3, Filter
+  History, BarChart3, Filter, EyeOff, Eye
 } from "lucide-react";
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -76,6 +76,7 @@ const App = () => {
   const [fechamentoSort, setFechamentoSort] = useState("DATE_DESC"); // New state for Fechamento sorting
 
   const [selectedPerson, setSelectedPerson] = useState("");
+  const [hiddenRankingIds, setHiddenRankingIds] = useState([]);
   const [vendasRaw, setVendasRaw] = useState([]);
   const [reunioesRaw, setReunioesRaw] = useState([]);
 
@@ -633,6 +634,14 @@ const App = () => {
                   <BarChart3 size={20} className="text-[#00D4C5]" />
                   <h2 className="text-xl font-black uppercase tracking-widest text-[#00D4C5]">Ranking do Time</h2>
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-2 bg-white/5 px-3 py-1 rounded-lg">Variáveis Fechadas</span>
+                  {hiddenRankingIds.length > 0 && (
+                    <button
+                      onClick={() => setHiddenRankingIds([])}
+                      className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-[#00D4C5] transition-colors bg-white/5 px-3 py-1 rounded-lg"
+                    >
+                      <Eye size={12} /> Mostrar todos ({hiddenRankingIds.length} ocultos)
+                    </button>
+                  )}
                 </div>
 
                 <div className="overflow-x-auto">
@@ -645,47 +654,58 @@ const App = () => {
                         <th className="px-4 py-3 text-right">Meta</th>
                         <th className="px-4 py-3 text-right">Realizado</th>
                         <th className="px-4 py-3" style={{ minWidth: '180px' }}>Atingimento</th>
-                        <th className="px-4 py-3 rounded-r-xl text-right">Variável Fechada</th>
+                        <th className="px-4 py-3 text-right">Variável Fechada</th>
+                        <th className="px-4 py-3 rounded-r-xl text-center w-12"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {(() => {
-                        const members = [...goals.closedVariables]
-                          .sort((a, b) => (b.achievement || 0) - (a.achievement || 0))
-                          .map((v, idx) => {
-                            const ach = v.achievement || 0;
-                            const colorClass = ach >= 100 ? 'text-emerald-400' : ach >= 80 ? 'text-amber-400' : 'text-red-400';
-                            const barColor = ach >= 100 ? 'bg-emerald-400' : ach >= 80 ? 'bg-amber-400' : 'bg-red-400';
-                            const barWidth = Math.min(ach, 150);
-                            const metaLabel = v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-";
-                            const realizedLabel = v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-";
-                            return (
-                              <tr key={v.id} className="hover:bg-white/5 transition-colors">
-                                <td className="px-4 py-4 text-slate-500 font-bold">{idx + 1}</td>
-                                <td className="px-4 py-4 font-bold text-white">{v.name}</td>
-                                <td className="px-4 py-4 text-xs font-bold uppercase text-[#00D4C5]">{v.role}</td>
-                                <td className="px-4 py-4 text-right text-slate-400">{metaLabel}</td>
-                                <td className="px-4 py-4 text-right text-white">{realizedLabel}</td>
-                                <td className="px-4 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="flex-1 bg-white/5 rounded-full h-2 overflow-hidden">
-                                      <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(barWidth / 1.5, 100)}%` }}></div>
-                                    </div>
-                                    <span className={`font-black text-sm min-w-[55px] text-right ${colorClass}`}>{ach.toFixed(1)}%</span>
+                        const visibleMembers = [...goals.closedVariables]
+                          .filter(v => !hiddenRankingIds.includes(v.id))
+                          .sort((a, b) => (b.achievement || 0) - (a.achievement || 0));
+                        return visibleMembers.map((v, idx) => {
+                          const ach = v.achievement || 0;
+                          const colorClass = ach >= 100 ? 'text-emerald-400' : ach >= 80 ? 'text-amber-400' : 'text-red-400';
+                          const barColor = ach >= 100 ? 'bg-emerald-400' : ach >= 80 ? 'bg-amber-400' : 'bg-red-400';
+                          const barWidth = Math.min(ach, 150);
+                          const metaLabel = v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-";
+                          const realizedLabel = v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-";
+                          return (
+                            <tr key={v.id} className="hover:bg-white/5 transition-colors">
+                              <td className="px-4 py-4 text-slate-500 font-bold">{idx + 1}</td>
+                              <td className="px-4 py-4 font-bold text-white">{v.name}</td>
+                              <td className="px-4 py-4 text-xs font-bold uppercase text-[#00D4C5]">{v.role}</td>
+                              <td className="px-4 py-4 text-right text-slate-400">{metaLabel}</td>
+                              <td className="px-4 py-4 text-right text-white">{realizedLabel}</td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1 bg-white/5 rounded-full h-2 overflow-hidden">
+                                    <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(barWidth / 1.5, 100)}%` }}></div>
                                   </div>
-                                </td>
-                                <td className="px-4 py-4 text-right font-black text-[#00D4C5]">{formatCurrency(v.value)}</td>
-                              </tr>
-                            );
-                          });
-                        return members;
+                                  <span className={`font-black text-sm min-w-[55px] text-right ${colorClass}`}>{ach.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-right font-black text-[#00D4C5]">{formatCurrency(v.value)}</td>
+                              <td className="px-4 py-4 text-center">
+                                <button
+                                  onClick={() => setHiddenRankingIds(prev => [...prev, v.id])}
+                                  className="text-slate-600 hover:text-red-400 transition-colors p-1"
+                                  title={`Ocultar ${v.name}`}
+                                >
+                                  <EyeOff size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        });
                       })()}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-[#00D4C5]/30">
-                        <td colSpan="4" className="px-4 py-4"></td>
-                        <td colSpan="2" className="px-4 py-4 text-right text-sm font-black uppercase tracking-widest text-[#00D4C5]">Total</td>
-                        <td className="px-4 py-4 text-right font-black text-[#00D4C5] text-lg">{formatCurrency(goals.closedVariables.reduce((acc, v) => acc + v.value, 0))}</td>
+                        <td colSpan="5" className="px-4 py-4"></td>
+                        <td className="px-4 py-4 text-right text-sm font-black uppercase tracking-widest text-[#00D4C5]">Total</td>
+                        <td className="px-4 py-4 text-right font-black text-[#00D4C5] text-lg">{formatCurrency(goals.closedVariables.filter(v => !hiddenRankingIds.includes(v.id)).reduce((acc, v) => acc + v.value, 0))}</td>
+                        <td></td>
                       </tr>
                     </tfoot>
                   </table>
