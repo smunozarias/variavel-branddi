@@ -668,8 +668,9 @@ const App = () => {
                           const colorClass = ach >= 100 ? 'text-emerald-400' : ach >= 80 ? 'text-amber-400' : 'text-red-400';
                           const barColor = ach >= 100 ? 'bg-emerald-400' : ach >= 80 ? 'bg-amber-400' : 'bg-red-400';
                           const barWidth = Math.min(ach, 150);
-                          const metaLabel = v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-";
-                          const realizedLabel = v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-";
+                          const isSdr = v.role === "SDR";
+                          const metaLabel = v.target ? (isSdr ? v.target : formatCurrency(v.target)) : "-";
+                          const realizedLabel = v.realized ? (isSdr ? v.realized : formatCurrency(v.realized)) : "-";
                           return (
                             <tr key={v.id} className="hover:bg-white/5 transition-colors">
                               <td className="px-4 py-4 text-slate-500 font-bold">{idx + 1}</td>
