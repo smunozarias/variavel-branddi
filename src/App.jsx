@@ -363,17 +363,22 @@ const App = () => {
       return {
         data: filteredMonths.map(m => {
           const monthData = historyDB[m];
+          if (!monthData || !monthData.individuals) return null;
           const person = monthData.individuals.find(p => p.name === selectedHistoryPerson);
-          const currentRole = person?.role || (monthData.individuals.find(p => p.name === selectedHistoryPerson)?.role);
+          const currentRole = person?.role;
 
           let personAch = 0;
+          let personVariable = 0;
           let teamAvgAch = 0;
 
+          if (person) {
+            personAch = person.achievement || 0;
+            personVariable = person.variableReceived || 0;
+          }
           if (currentRole) {
-            if (person) personAch = person.achievement;
             const peers = monthData.individuals.filter(p => p.role === currentRole);
             if (peers.length > 0) {
-              const totalAch = peers.reduce((acc, p) => acc + p.achievement, 0);
+              const totalAch = peers.reduce((acc, p) => acc + (p.achievement || 0), 0);
               teamAvgAch = totalAch / peers.length;
             }
           }
@@ -381,12 +386,13 @@ const App = () => {
           return {
             label: monthData.title.split(' ')[0].substring(0, 3),
             person: personAch,
+            variable: personVariable,
             average: teamAvgAch
           };
-        }),
+        }).filter(Boolean),
         lines: [
           { key: 'person', color: '#00D4C5', name: 'Atingimento Individual (%)' },
-          { key: 'average', color: '#f59e0b', name: 'Média da Equipe (%)' }
+          { key: 'variable', color: '#f59e0b', name: 'Variável Recebida (R$)' }
         ]
       };
     }
@@ -420,7 +426,7 @@ const App = () => {
           score: "-",
           value: monthData.teamStats?.revenueReal || 0,
           achievement: monthData.teamStats?.revenueGoal > 0 ? (monthData.teamStats.revenueReal / monthData.teamStats.revenueGoal) * 100 : 0,
-          variable: (monthData.individuals || []).reduce((acc, ind) => acc + (ind.value || 0), 0) // Sum of variables
+          variable: (monthData.individuals || []).reduce((acc, ind) => acc + (ind.variableReceived || 0), 0)
         };
       }).filter(Boolean);
     } else {
@@ -434,9 +440,9 @@ const App = () => {
             person: p.name,
             role: p.role,
             score: p.role === "SDR" ? p.realized : "-",
-            value: p.role === "Closer" ? p.realized : p.value,
-            achievement: p.achievement,
-            variable: p.value
+            value: p.role === "Closer" ? p.realized : p.variableReceived,
+            achievement: p.achievement || 0,
+            variable: p.variableReceived || 0
           });
         }
       });
