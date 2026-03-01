@@ -626,12 +626,13 @@ const App = () => {
               </div>
             </div>
 
-            {/* RANKING DO TIME */}
-            {(dataStore.people.sdrs.length > 0 || dataStore.people.closers.length > 0) && (
+            {/* RANKING DO TIME — Somente variáveis fechadas */}
+            {goals.closedVariables.length > 0 && (
               <div className="bg-[#0A2230]/40 p-8 rounded-[2.5rem] border border-white/5 backdrop-blur-sm">
                 <div className="flex items-center gap-3 mb-8">
                   <BarChart3 size={20} className="text-[#00D4C5]" />
                   <h2 className="text-xl font-black uppercase tracking-widest text-[#00D4C5]">Ranking do Time</h2>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-2 bg-white/5 px-3 py-1 rounded-lg">Variáveis Fechadas</span>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -644,47 +645,49 @@ const App = () => {
                         <th className="px-4 py-3 text-right">Meta</th>
                         <th className="px-4 py-3 text-right">Realizado</th>
                         <th className="px-4 py-3" style={{ minWidth: '180px' }}>Atingimento</th>
-                        <th className="px-4 py-3 rounded-r-xl text-right">Variável Estimada</th>
+                        <th className="px-4 py-3 rounded-r-xl text-right">Variável Fechada</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {(() => {
-                        const allMembers = [
-                          ...dataStore.people.sdrs.map(name => {
-                            const data = calculateSDR(name);
-                            return { name, role: 'SDR', meta: data.metaIndiv, realized: data.totalReunioesRealizadas, achievement: data.atingimentoMeta, variable: data.total, metaLabel: `${data.metaIndiv} reuniões`, realizedLabel: `${data.totalReunioesRealizadas} reuniões` };
-                          }),
-                          ...dataStore.people.closers.map(name => {
-                            const data = calculateCloser(name);
-                            return { name, role: 'Closer', meta: data.metaIndiv, realized: data.fatIndiv, achievement: data.atingimentoIndiv, variable: data.total, metaLabel: formatCurrency(data.metaIndiv), realizedLabel: formatCurrency(data.fatIndiv) };
-                          })
-                        ].sort((a, b) => b.achievement - a.achievement);
-
-                        return allMembers.map((m, idx) => {
-                          const colorClass = m.achievement >= 100 ? 'text-emerald-400' : m.achievement >= 80 ? 'text-amber-400' : 'text-red-400';
-                          const barColor = m.achievement >= 100 ? 'bg-emerald-400' : m.achievement >= 80 ? 'bg-amber-400' : 'bg-red-400';
-                          const barWidth = Math.min(m.achievement, 150);
-                          return (
-                            <tr key={m.name} className="hover:bg-white/5 transition-colors">
-                              <td className="px-4 py-4 text-slate-500 font-bold">{idx + 1}</td>
-                              <td className="px-4 py-4 font-bold text-white">{m.name}</td>
-                              <td className="px-4 py-4 text-xs font-bold uppercase text-[#00D4C5]">{m.role}</td>
-                              <td className="px-4 py-4 text-right text-slate-400">{m.metaLabel}</td>
-                              <td className="px-4 py-4 text-right text-white">{m.realizedLabel}</td>
-                              <td className="px-4 py-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex-1 bg-white/5 rounded-full h-2 overflow-hidden">
-                                    <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(barWidth / 1.5, 100)}%` }}></div>
+                        const members = [...goals.closedVariables]
+                          .sort((a, b) => (b.achievement || 0) - (a.achievement || 0))
+                          .map((v, idx) => {
+                            const ach = v.achievement || 0;
+                            const colorClass = ach >= 100 ? 'text-emerald-400' : ach >= 80 ? 'text-amber-400' : 'text-red-400';
+                            const barColor = ach >= 100 ? 'bg-emerald-400' : ach >= 80 ? 'bg-amber-400' : 'bg-red-400';
+                            const barWidth = Math.min(ach, 150);
+                            const metaLabel = v.target ? (v.role === "Closer" ? formatCurrency(v.target) : v.target) : "-";
+                            const realizedLabel = v.realized ? (v.role === "Closer" ? formatCurrency(v.realized) : v.realized) : "-";
+                            return (
+                              <tr key={v.id} className="hover:bg-white/5 transition-colors">
+                                <td className="px-4 py-4 text-slate-500 font-bold">{idx + 1}</td>
+                                <td className="px-4 py-4 font-bold text-white">{v.name}</td>
+                                <td className="px-4 py-4 text-xs font-bold uppercase text-[#00D4C5]">{v.role}</td>
+                                <td className="px-4 py-4 text-right text-slate-400">{metaLabel}</td>
+                                <td className="px-4 py-4 text-right text-white">{realizedLabel}</td>
+                                <td className="px-4 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex-1 bg-white/5 rounded-full h-2 overflow-hidden">
+                                      <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(barWidth / 1.5, 100)}%` }}></div>
+                                    </div>
+                                    <span className={`font-black text-sm min-w-[55px] text-right ${colorClass}`}>{ach.toFixed(1)}%</span>
                                   </div>
-                                  <span className={`font-black text-sm min-w-[55px] text-right ${colorClass}`}>{m.achievement.toFixed(1)}%</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-4 text-right font-black text-[#00D4C5]">{formatCurrency(m.variable)}</td>
-                            </tr>
-                          );
-                        });
+                                </td>
+                                <td className="px-4 py-4 text-right font-black text-[#00D4C5]">{formatCurrency(v.value)}</td>
+                              </tr>
+                            );
+                          });
+                        return members;
                       })()}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-[#00D4C5]/30">
+                        <td colSpan="4" className="px-4 py-4"></td>
+                        <td colSpan="2" className="px-4 py-4 text-right text-sm font-black uppercase tracking-widest text-[#00D4C5]">Total</td>
+                        <td className="px-4 py-4 text-right font-black text-[#00D4C5] text-lg">{formatCurrency(goals.closedVariables.reduce((acc, v) => acc + v.value, 0))}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               </div>
