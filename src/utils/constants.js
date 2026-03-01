@@ -28,8 +28,8 @@ export const initialRules = {
     },
     ldr: {
         bonusReunioes: [{ min: 120, val: 250 }, { min: 100, val: 200 }, { min: 80, val: 150 }],
-        bonusGarimpados: [{ min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 }],
-        bonusCards: [{ min: 100, val: 400 }, { min: 80, val: 250 }, { min: 50, val: 150 }],
+        bonusGarimpados: [{ min: 120, val: 400 }, { min: 100, val: 250 }, { min: 80, val: 150 }],
+        bonusCards: [{ min: 120, val: 400 }, { min: 100, val: 250 }, { min: 80, val: 150 }],
     },
 };
 
