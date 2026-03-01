@@ -625,6 +625,70 @@ const App = () => {
                 </div>
               </div>
             </div>
+
+            {/* RANKING DO TIME */}
+            {(dataStore.people.sdrs.length > 0 || dataStore.people.closers.length > 0) && (
+              <div className="bg-[#0A2230]/40 p-8 rounded-[2.5rem] border border-white/5 backdrop-blur-sm">
+                <div className="flex items-center gap-3 mb-8">
+                  <BarChart3 size={20} className="text-[#00D4C5]" />
+                  <h2 className="text-xl font-black uppercase tracking-widest text-[#00D4C5]">Ranking do Time</h2>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-slate-400 uppercase tracking-widest bg-white/5">
+                      <tr>
+                        <th className="px-4 py-3 rounded-l-xl">#</th>
+                        <th className="px-4 py-3">Colaborador</th>
+                        <th className="px-4 py-3">Cargo</th>
+                        <th className="px-4 py-3 text-right">Meta</th>
+                        <th className="px-4 py-3 text-right">Realizado</th>
+                        <th className="px-4 py-3" style={{ minWidth: '180px' }}>Atingimento</th>
+                        <th className="px-4 py-3 rounded-r-xl text-right">Variável Estimada</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {(() => {
+                        const allMembers = [
+                          ...dataStore.people.sdrs.map(name => {
+                            const data = calculateSDR(name);
+                            return { name, role: 'SDR', meta: data.metaIndiv, realized: data.totalReunioesRealizadas, achievement: data.atingimentoMeta, variable: data.total, metaLabel: `${data.metaIndiv} reuniões`, realizedLabel: `${data.totalReunioesRealizadas} reuniões` };
+                          }),
+                          ...dataStore.people.closers.map(name => {
+                            const data = calculateCloser(name);
+                            return { name, role: 'Closer', meta: data.metaIndiv, realized: data.fatIndiv, achievement: data.atingimentoIndiv, variable: data.total, metaLabel: formatCurrency(data.metaIndiv), realizedLabel: formatCurrency(data.fatIndiv) };
+                          })
+                        ].sort((a, b) => b.achievement - a.achievement);
+
+                        return allMembers.map((m, idx) => {
+                          const colorClass = m.achievement >= 100 ? 'text-emerald-400' : m.achievement >= 80 ? 'text-amber-400' : 'text-red-400';
+                          const barColor = m.achievement >= 100 ? 'bg-emerald-400' : m.achievement >= 80 ? 'bg-amber-400' : 'bg-red-400';
+                          const barWidth = Math.min(m.achievement, 150);
+                          return (
+                            <tr key={m.name} className="hover:bg-white/5 transition-colors">
+                              <td className="px-4 py-4 text-slate-500 font-bold">{idx + 1}</td>
+                              <td className="px-4 py-4 font-bold text-white">{m.name}</td>
+                              <td className="px-4 py-4 text-xs font-bold uppercase text-[#00D4C5]">{m.role}</td>
+                              <td className="px-4 py-4 text-right text-slate-400">{m.metaLabel}</td>
+                              <td className="px-4 py-4 text-right text-white">{m.realizedLabel}</td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1 bg-white/5 rounded-full h-2 overflow-hidden">
+                                    <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(barWidth / 1.5, 100)}%` }}></div>
+                                  </div>
+                                  <span className={`font-black text-sm min-w-[55px] text-right ${colorClass}`}>{m.achievement.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-right font-black text-[#00D4C5]">{formatCurrency(m.variable)}</td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1514,6 +1578,31 @@ const App = () => {
                       </tr>
                     ))}
                   </tbody>
+                  {closedTableData.length > 0 && (() => {
+                    const totalGeral = closedTableData.reduce((acc, v) => acc + v.value, 0);
+                    const byRole = {};
+                    closedTableData.forEach(v => {
+                      byRole[v.role] = (byRole[v.role] || 0) + v.value;
+                    });
+                    return (
+                      <tfoot>
+                        {Object.entries(byRole).sort((a, b) => b[1] - a[1]).map(([role, total]) => (
+                          <tr key={role} className="border-t border-white/10">
+                            <td colSpan="4" className="px-4 py-3"></td>
+                            <td colSpan="2" className="px-4 py-3 text-right text-xs font-bold uppercase tracking-widest text-slate-400">Total {role}</td>
+                            <td className="px-4 py-3 text-right font-bold text-white">{formatCurrency(total)}</td>
+                            <td></td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2 border-[#00D4C5]/30">
+                          <td colSpan="4" className="px-4 py-4"></td>
+                          <td colSpan="2" className="px-4 py-4 text-right text-sm font-black uppercase tracking-widest text-[#00D4C5]">Total Geral a Pagar</td>
+                          <td className="px-4 py-4 text-right font-black text-[#00D4C5] text-xl">{formatCurrency(totalGeral)}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
                 </table>
               </div>
             </div>
