@@ -13,9 +13,11 @@ import SummaryItem from "./components/SummaryItem";
 import RuleColumn from "./components/RuleColumn";
 import SimpleLineChart from "./components/SimpleLineChart";
 import NavBar from "./components/NavBar";
+import LoginPage from "./components/LoginPage";
 import { formatCurrency } from "./utils/formatCurrency";
 import { initialRules, initialGoals } from "./utils/constants";
 import { useSupabase } from "./hooks/useSupabase";
+import { useAuth } from "./hooks/useAuth";
 
 // --- HELPERS ---
 const parseNum = (val, isScore = false) => {
@@ -62,6 +64,66 @@ const getTierValue = (list, val, field = "min") => {
 
 // --- APP PRINCIPAL ---
 const App = () => {
+  const { user, loading: authLoading, signIn, signUp, signOut } = useAuth();
+  const [authError, setAuthError] = useState(null);
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
+
+  // Função para lidar com login/signup
+  const handleLogin = async (email, password, isSignUp) => {
+    setAuthError(null);
+    
+    if (isSignUp) {
+      const result = await signUp(email, password);
+      if (result.success) {
+        toast.success("Conta criada com sucesso! Faça login com suas credenciais.");
+        setIsSignUpMode(false);
+      } else {
+        setAuthError(result.error);
+        toast.error(result.error);
+      }
+    } else {
+      const result = await signIn(email, password);
+      if (result.success) {
+        toast.success("Login realizado com sucesso!");
+        setIsSignUpMode(false);
+      } else {
+        setAuthError(result.error);
+        toast.error(result.error);
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    return await signOut();
+  };
+
+  // Mostrar tela de login se não autenticado
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto mb-4" />
+          <p className="text-gray-600 font-semibold">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <Toaster position="top-right" />
+        <LoginPage onLogin={handleLogin} />
+      </>
+    );
+  }
+
+  // Resto da aplicação aqui
+  return <AppContent handleLogout={handleLogout} user={user} />;
+};
+
+// --- APP CONTENT (quando autenticado) ---
+const AppContent = ({ handleLogout, user }) => {
   const [activeTab, setActiveTab] = useState("DASHBOARD");
 
   // --- ESTADOS DE DATA E NUVEM ---
@@ -487,9 +549,11 @@ const App = () => {
         reportTitle={reportTitle}
         loading={loading}
         setSelectedPerson={setSelectedPerson}
+        user={user}
+        onLogout={handleLogout}
       />
 
-      <main className="max-w-7xl mx-auto p-8">
+      <div className="max-w-7xl mx-auto p-8">
 
         {/* SELETOR DE MÊS E ANO (GLOBAL) */}
         {activeTab !== "HISTÓRICO" && (
@@ -1703,7 +1767,8 @@ const App = () => {
           </div>
         )}
 
-      </main>
+      </div>
+      <Toaster position="top-right" />
     </div>
   );
 };
