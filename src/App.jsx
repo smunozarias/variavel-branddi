@@ -64,32 +64,15 @@ const getTierValue = (list, val, field = "min") => {
 
 // --- APP PRINCIPAL ---
 const App = () => {
-  const { user, loading: authLoading, signIn, signUp, signOut } = useAuth();
-  const [authError, setAuthError] = useState(null);
-  const [isSignUpMode, setIsSignUpMode] = useState(false);
+  const { isAuthenticated, loading: authLoading, signIn, signOut } = useAuth();
 
-  // Função para lidar com login/signup
-  const handleLogin = async (email, password, isSignUp) => {
-    setAuthError(null);
-    
-    if (isSignUp) {
-      const result = await signUp(email, password);
-      if (result.success) {
-        toast.success("Conta criada com sucesso! Faça login com suas credenciais.");
-        setIsSignUpMode(false);
-      } else {
-        setAuthError(result.error);
-        toast.error(result.error);
-      }
+  // Função para lidar com login
+  const handleLogin = async (password) => {
+    const result = await signIn(password);
+    if (result.success) {
+      toast.success("Acesso concedido!");
     } else {
-      const result = await signIn(email, password);
-      if (result.success) {
-        toast.success("Login realizado com sucesso!");
-        setIsSignUpMode(false);
-      } else {
-        setAuthError(result.error);
-        toast.error(result.error);
-      }
+      toast.error(result.error);
     }
   };
 
@@ -100,16 +83,16 @@ const App = () => {
   // Mostrar tela de login se não autenticado
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#021017] to-[#05202B] flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-600 font-semibold">Carregando...</p>
+          <Loader2 className="w-12 h-12 animate-spin text-[#00D4C5] mx-auto mb-4" />
+          <p className="text-[#00D4C5] font-semibold">Carregando...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return (
       <>
         <Toaster position="top-right" />
@@ -119,11 +102,11 @@ const App = () => {
   }
 
   // Resto da aplicação aqui
-  return <AppContent handleLogout={handleLogout} user={user} />;
+  return <AppContent handleLogout={handleLogout} />;
 };
 
 // --- APP CONTENT (quando autenticado) ---
-const AppContent = ({ handleLogout, user }) => {
+const AppContent = ({ handleLogout }) => {
   const [activeTab, setActiveTab] = useState("DASHBOARD");
 
   // --- ESTADOS DE DATA E NUVEM ---
@@ -549,13 +532,11 @@ const AppContent = ({ handleLogout, user }) => {
         reportTitle={reportTitle}
         loading={loading}
         setSelectedPerson={setSelectedPerson}
-        user={user}
         onLogout={handleLogout}
       />
 
       <div className="max-w-7xl mx-auto p-8">
 
-        {/* SELETOR DE MÊS E ANO (GLOBAL) */}
         {activeTab !== "HISTÓRICO" && (
           <div className="flex justify-end items-center gap-4 mb-8">
             <div className="flex items-center gap-2 bg-[#0B132B] px-4 py-2 rounded-xl border border-white/10">

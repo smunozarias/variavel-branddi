@@ -1,8 +1,8 @@
 import React from 'react';
-import { Calculator, Loader2, LogOut, User } from "lucide-react";
+import { Calculator, Loader2, LogOut } from "lucide-react";
 import toast from 'react-hot-toast';
 
-const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPerson, user, onLogout }) => {
+const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPerson, onLogout }) => {
   const handleLogout = async () => {
     const result = await onLogout();
     if (result.success) {
@@ -51,23 +51,13 @@ const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPers
                 ))}
             </div>
 
-            <div className="flex items-center gap-3">
-              {user && (
-                <div className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-lg">
-                  <User size={16} className="text-[#00D4C5]" />
-                  <span className="text-xs font-semibold text-[#00D4C5] truncate max-w-[150px]">
-                    {user.email}
-                  </span>
-                </div>
-              )}
-              <button
-                onClick={handleLogout}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition"
-              >
-                <LogOut size={16} />
-                Sair
-              </button>
-            </div>
+            <button
+              onClick={handleLogout}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition"
+            >
+              <LogOut size={16} />
+              Sair
+            </button>
         </div>
     </nav>
   );
