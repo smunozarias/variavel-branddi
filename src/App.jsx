@@ -532,7 +532,6 @@ const AppContent = ({ handleLogout }) => {
         reportTitle={reportTitle}
         loading={loading}
         setSelectedPerson={setSelectedPerson}
-        onLogout={handleLogout}
       />
 
       <div className="max-w-7xl mx-auto p-8">
@@ -851,19 +850,20 @@ const AppContent = ({ handleLogout }) => {
                     ))}
                   </div>
 
-                  {/* DETALHES RESTAURADOS */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                  {/* DETALHES RESTAURADOS - LAYOUT 3 COLUNAS */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                    {/* Coluna 1: Reuniões Parte 1 */}
                     <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
                       <h4 className="text-xs font-black uppercase tracking-widest text-[#00D4C5] mb-4 flex items-center gap-2">
-                        <ClipboardList size={14} /> Detalhe de Reuniões
+                        <ClipboardList size={14} /> Reuniões (1/2)
                       </h4>
                       <div className="space-y-2">
                         {data.meetingsDetails.length === 0 && <p className="text-xs text-slate-500 italic">Nenhuma reunião registrada.</p>}
-                        {data.meetingsDetails.map((item, idx) => (
+                        {data.meetingsDetails.slice(0, Math.ceil(data.meetingsDetails.length / 2)).map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
-                            <span className="text-slate-300 truncate max-w-[150px]" title={item.name}>{item.name}</span>
+                            <span className="text-slate-300 truncate max-w-[120px]" title={item.name}>{item.name}</span>
                             <div className="text-right">
-                              <div className="font-bold text-white">{item.score} pts</div>
+                              <div className="font-bold text-white text-xs">{item.score} pts</div>
                               <div className="text-[10px] text-[#00D4C5]">{formatCurrency(item.bonus)}</div>
                             </div>
                           </div>
@@ -871,6 +871,25 @@ const AppContent = ({ handleLogout }) => {
                       </div>
                     </div>
 
+                    {/* Coluna 2: Reuniões Parte 2 */}
+                    <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-[#00D4C5] mb-4 flex items-center gap-2">
+                        <ClipboardList size={14} /> Reuniões (2/2)
+                      </h4>
+                      <div className="space-y-2">
+                        {data.meetingsDetails.slice(Math.ceil(data.meetingsDetails.length / 2)).map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
+                            <span className="text-slate-300 truncate max-w-[120px]" title={item.name}>{item.name}</span>
+                            <div className="text-right">
+                              <div className="font-bold text-white text-xs">{item.score} pts</div>
+                              <div className="text-[10px] text-[#00D4C5]">{formatCurrency(item.bonus)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Coluna 3: Vendas */}
                     <div className="bg-[#0B132B] p-5 rounded-2xl border border-white/5">
                       <h4 className="text-xs font-black uppercase tracking-widest text-emerald-400 mb-4 flex items-center gap-2">
                         <TrendingUp size={14} /> Vendas Iniciadas
@@ -879,9 +898,9 @@ const AppContent = ({ handleLogout }) => {
                         {data.salesDetails.length === 0 && <p className="text-xs text-slate-500 italic">Nenhuma venda iniciada.</p>}
                         {data.salesDetails.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
-                            <span className="text-slate-300 truncate max-w-[150px]" title={item.name}>{item.name}</span>
+                            <span className="text-slate-300 truncate max-w-[120px]" title={item.name}>{item.name}</span>
                             <div className="text-right">
-                              <div className="font-bold text-white">{formatCurrency(item.revenue)}</div>
+                              <div className="font-bold text-white text-xs">{formatCurrency(item.revenue)}</div>
                               <div className="text-[10px] text-emerald-400">{formatCurrency(item.bonus)}</div>
                             </div>
                           </div>
@@ -1750,6 +1769,25 @@ const AppContent = ({ handleLogout }) => {
 
       </div>
       <Toaster position="top-right" />
+
+      {/* Footer com Logout */}
+      <footer className="fixed bottom-0 left-0 right-0 bg-[#051F2B]/90 backdrop-blur-sm border-t border-[#00D4C5]/10 px-8 py-4">
+        <div className="max-w-7xl mx-auto flex justify-end">
+          <button
+            onClick={async () => {
+              const result = await handleLogout();
+              if (result.success) {
+                toast.success('Desconectado com sucesso');
+              } else {
+                toast.error(result.error || 'Erro ao desconectar');
+              }
+            }}
+            className="text-xs font-semibold text-[#00D4C5] hover:text-white transition opacity-70 hover:opacity-100"
+          >
+            Sair
+          </button>
+        </div>
+      </footer>
     </div>
   );
 };

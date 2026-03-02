@@ -1,17 +1,7 @@
 import React from 'react';
-import { Calculator, Loader2, LogOut } from "lucide-react";
-import toast from 'react-hot-toast';
+import { Calculator, Loader2 } from "lucide-react";
 
-const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPerson, onLogout }) => {
-  const handleLogout = async () => {
-    const result = await onLogout();
-    if (result.success) {
-      toast.success('Desconectado com sucesso');
-    } else {
-      toast.error(result.error || 'Erro ao desconectar');
-    }
-  };
-
+const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPerson }) => {
   return (
     <nav className="bg-[#0A2230]/80 backdrop-blur-xl border-b border-[#00D4C5]/10 px-8 py-5 sticky top-0 z-50 shadow-2xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
@@ -50,14 +40,6 @@ const NavBar = ({ activeTab, setActiveTab, reportTitle, loading, setSelectedPers
                     </button>
                 ))}
             </div>
-
-            <button
-              onClick={handleLogout}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition"
-            >
-              <LogOut size={16} />
-              Sair
-            </button>
         </div>
     </nav>
   );
